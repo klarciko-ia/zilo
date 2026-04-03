@@ -1,0 +1,88 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { decodeSelections } from "@/lib/payment-flow";
+import { usePayment } from "@/lib/payment-context";
+import { PaymentType } from "@/lib/types";
+
+type Props = {
+  tableId: string;
+  paymentTypeRaw: string;
+  amount: number;
+  itemsRaw: string | null;
+};
+
+function toPaymentType(value: string): PaymentType {
+  if (value === "percentage_partial") return "percentage_partial";
+  if (value === "item_partial") return "item_partial";
+  return "full";
+}
+
+export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw }: Props) {
+  const router = useRouter();
+  const { applyPayment } = usePayment();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const paymentType = toPaymentType(paymentTypeRaw);
+  const itemSelections = decodeSelections(itemsRaw);
+
+  const onConfirmCash = async () => {
+    setLoading(true);
+    setError(null);
+    const result = await applyPayment({
+      tableId,
+      paymentMethod: "cash",
+      paymentType,
+      amount,
+      itemSelections,
+    });
+    if (!result.ok) {
+      setError(result.error ?? "Could not save cash payment.");
+      setLoading(false);
+      return;
+    }
+    router.push(
+      `/table/${tableId}/checkout/success?method=cash&amount=${amount.toFixed(2)}&paymentId=${result.paymentId}`
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold">Pay with cash</h1>
+
+      <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+        <p className="text-sm font-medium text-amber-950">Pay your waiter</p>
+        <p className="mt-1 text-sm text-amber-900">
+          Please give <span className="font-semibold">{amount.toFixed(2)} MAD</span> in cash to your
+          server or at the counter. We will mark this payment as pending until staff confirms it.
+        </p>
+      </div>
+
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+        <p className="text-sm text-slate-600">Amount</p>
+        <p className="text-xl font-semibold">{amount.toFixed(2)} MAD</p>
+      </div>
+
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      <button
+        type="button"
+        onClick={onConfirmCash}
+        disabled={loading}
+        className="block w-full rounded-xl bg-brand px-4 py-3 text-center font-medium text-white disabled:opacity-60"
+      >
+        {loading ? "Saving…" : "I paid / will pay cash — mark as pending"}
+      </button>
+
+      <Link
+        href={`/table/${tableId}/checkout/method?type=${paymentType}&amount=${amount.toFixed(2)}${itemsRaw ? `&items=${encodeURIComponent(itemsRaw)}` : ""}`}
+        className="block rounded-xl border border-slate-300 px-4 py-3 text-center font-medium"
+      >
+        Back
+      </Link>
+    </div>
+  );
+}

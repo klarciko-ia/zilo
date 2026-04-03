@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply text-slate-900 antialiased min-h-screen selection:bg-red-100;
+    background-color: #ffffff;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(255, 59, 48, 0.05) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(0, 0, 0, 0.02) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(255, 59, 48, 0.02) 0px, transparent 50%);
+    background-attachment: fixed;
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+  }
+}
+
+.glass-card {
+  @apply bg-white/60 backdrop-blur-3xl border border-white/60 shadow-premium shadow-black/[0.02] ring-1 ring-black/[0.03];
+}
+
+.btn-primary {
+  @apply bg-black text-white rounded-[2rem] px-8 py-5 font-bold transition-all active:scale-95 hover:shadow-2xl hover:shadow-black/20 shadow-xl shadow-black/10 flex items-center justify-center gap-3;
+}
+
+.btn-accent {
+  @apply bg-[#FF3B30] text-white rounded-[2rem] px-8 py-5 font-bold transition-all active:scale-95 hover:shadow-2xl hover:shadow-red-500/30 shadow-xl shadow-red-500/20 flex items-center justify-center gap-3;
+}
+
+.price-tag {
+  @apply font-mono font-bold tracking-tighter;
+}
+
+/* 2026 Qlub-style Animations */
+.reveal-item {
+  animation: reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Custom Mesh Gradient Background Element */
+.bg-mesh {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bg-mesh::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 59, 48, 0.03) 0%, transparent 50%);
+  animation: rotate 20s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
