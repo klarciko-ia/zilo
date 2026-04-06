@@ -1,27 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getAdminSession } from "@/lib/admin-session";
 import { formatCurrency } from "@/lib/format-currency";
 import { deriveTableStatus } from "@/lib/order-lifecycle";
-import type { Currency, OrderStatus, TableDisplayStatus } from "@/lib/types";
-
-type OrderItem = { name: string; quantity: number; unitPrice: number };
-
-type TableOrder = {
-  id: string;
-  status: OrderStatus;
-  total: number;
-  createdAt: string;
-  items: OrderItem[];
-};
-
-type TableData = {
-  id: string;
-  tableNumber: number;
-  qrSlug: string;
-  order: TableOrder | null;
-};
+import type { Currency, TableDisplayStatus } from "@/lib/types";
+import { TableDetail } from "./table-detail";
+import type { TableData } from "./table-detail";
 
 const STATUS_STYLES: Record<
   TableDisplayStatus,
@@ -62,8 +47,9 @@ export function TablesGrid() {
   const [tables, setTables] = useState<TableData[]>([]);
   const [currency, setCurrency] = useState<Currency>("USD");
   const [loading, setLoading] = useState(true);
+  const [selectedTable, setSelectedTable] = useState<TableData | null>(null);
 
-  useEffect(() => {
+  const fetchTables = useCallback(() => {
     const session = getAdminSession();
     if (!session?.restaurantId) return;
 
@@ -80,6 +66,10 @@ export function TablesGrid() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchTables();
+  }, [fetchTables]);
 
   if (loading) {
     return (
@@ -112,9 +102,7 @@ export function TablesGrid() {
           <button
             key={table.id}
             type="button"
-            onClick={() =>
-              console.log("Table tapped:", table.tableNumber, table)
-            }
+            onClick={() => setSelectedTable(table)}
             className={`flex min-h-[7rem] flex-col items-start rounded-xl border p-3 text-left transition active:scale-[0.97] ${style.card}`}
           >
             <span className="text-2xl font-bold text-slate-800">
@@ -137,6 +125,18 @@ export function TablesGrid() {
           </button>
         );
       })}
+
+      {selectedTable && (
+        <TableDetail
+          table={selectedTable}
+          currency={currency}
+          onClose={() => setSelectedTable(null)}
+          onStatusChange={() => {
+            setSelectedTable(null);
+            fetchTables();
+          }}
+        />
+      )}
     </div>
   );
 }
