@@ -1,3 +1,11 @@
+export type VenueFlow = "dine_in" | "pay_first";
+
+/** Tier 1: guest orders from QR. Tier 2: browse menu + call waiter; staff/POS adds the bill. */
+export type GuestOrderMode = "self_service" | "waiter_service";
+
+/** Company owner, restaurant owner, and single-venue staff. */
+export type AdminRole = "super_admin" | "restaurant_owner" | "restaurant_admin" | "restaurant_staff";
+
 export type MenuCategory = {
   id: string;
   name: string;
@@ -38,12 +46,13 @@ export type OrderItemState = {
 };
 
 export type PaymentMethod = "card" | "cash";
-export type PaymentType = "full" | "percentage_partial" | "item_partial";
+export type PaymentType = "full" | "percentage_partial" | "item_partial" | "split_n_partial";
 export type PaymentStatus = "pending" | "completed" | "pending_cash_confirm" | "failed";
 
 export type PaymentRecord = {
   id: string;
   amount: number;
+  tipAmount?: number;
   paymentMethod: PaymentMethod;
   paymentType: PaymentType;
   status: PaymentStatus;
@@ -71,3 +80,7 @@ export type ReviewRecord = {
   redirectedToGoogle: boolean;
   createdAt: string;
 };
+
+export type OrderStatus = "pending" | "confirmed" | "awaiting_payment" | "pending_cash" | "paid";
+export type TableDisplayStatus = "free" | "ordering" | "confirmed" | "awaiting_payment";
+export type Currency = "USD" | "CAD" | "MAD" | "IDR";
