@@ -204,13 +204,14 @@ export function TableMenuCartClient({
 
             <div className="grid gap-6">
               {items
-                .filter((item) => item.categoryId === category.id && item.isAvailable)
+                .filter((item) => item.categoryId === category.id)
                 .map((item, idx) => {
                   const qty = mounted ? getQuantity(item.id) : 0;
+                  const soldOut = item.isAvailable === false;
                   return (
                     <div
                       key={item.id}
-                      className="reveal-item glass-card group relative flex flex-col overflow-hidden rounded-[2.5rem] p-2 transition-all hover:shadow-lift hover:ring-2 hover:ring-accent/20"
+                      className={`reveal-item glass-card group relative flex flex-col overflow-hidden rounded-[2.5rem] p-2 transition-all hover:shadow-lift hover:ring-2 hover:ring-accent/20 ${soldOut ? "opacity-50" : ""}`}
                       style={{ animationDelay: `${(catIdx * 3 + idx) * 0.1}s` }}
                     >
                       <div className="flex items-center gap-5 p-4">
@@ -229,15 +230,35 @@ export function TableMenuCartClient({
                               </svg>
                             </div>
                           )}
+                          {soldOut && (
+                            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 rounded-2xl">
+                              <span className="rounded-full bg-slate-700/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Sold out
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="min-w-0 flex-1 space-y-1">
-                          <p className="text-lg font-bold leading-tight tracking-tight text-brand">{item.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className={`text-lg font-bold leading-tight tracking-tight ${soldOut ? "text-slate-400 line-through" : "text-brand"}`}>{item.name}</p>
+                            {soldOut && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-600">
+                                86&apos;d
+                              </span>
+                            )}
+                          </div>
                           <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{item.description}</p>
                           <div className="pt-2 flex items-center justify-between">
-                            <p className="price-tag text-base font-bold text-brand">{item.price} <span className="text-[10px] font-medium text-slate-400">MAD</span></p>
+                            <p className={`price-tag text-base font-bold ${soldOut ? "text-slate-400" : "text-brand"}`}>{item.price} <span className="text-[10px] font-medium text-slate-400">MAD</span></p>
 
-                            {waiterMode ? null : qty > 0 ? (
+                            {soldOut ? (
+                              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-400 cursor-not-allowed">
+                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M18 12H6" />
+                                </svg>
+                              </span>
+                            ) : waiterMode ? null : qty > 0 ? (
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"

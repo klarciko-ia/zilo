@@ -5,20 +5,24 @@ import { useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import { logoutAdmin } from "@/lib/admin-auth";
 import { getAdminSession } from "@/lib/admin-session";
+import { ItemAvailability } from "./item-availability";
 
 export function RestaurantShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [restaurantName, setRestaurantName] = useState("Restaurant Admin");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [session, setSession] = useState<{ id: string; restaurantId: string } | null>(null);
 
   useEffect(() => {
-    const session = getAdminSession();
-    if (!session || !session.restaurantId) {
+    const s = getAdminSession();
+    if (!s || !s.restaurantId) {
       router.replace("/restaurant/login");
       return;
     }
+    setSession({ id: s.id, restaurantId: s.restaurantId });
 
     fetch(
-      `/api/restaurant/tables?restaurantId=${session.restaurantId}&adminId=${session.id}`,
+      `/api/restaurant/tables?restaurantId=${s.restaurantId}&adminId=${s.id}`,
     )
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -43,6 +47,7 @@ export function RestaurantShell({ children }: { children: ReactNode }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setMenuOpen(true)}
             className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100"
             aria-label="Menu"
           >
@@ -59,6 +64,14 @@ export function RestaurantShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main>{children}</main>
+      {session && (
+        <ItemAvailability
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          restaurantId={session.restaurantId}
+          adminId={session.id}
+        />
+      )}
     </div>
   );
 }
