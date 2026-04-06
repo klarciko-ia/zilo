@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { getAdminSession } from "@/lib/admin-session";
 import { formatCurrency } from "@/lib/format-currency";
 import { MasterKpiCards, type Restaurant } from "./master-kpi-cards";
 import { MasterActivityFeed } from "./master-activity-feed";
+import { MasterAddCustomer } from "./master-add-customer";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -75,8 +76,9 @@ export function MasterOverview() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
-  useEffect(() => {
+  const fetchRestaurants = useCallback(() => {
     const session = getAdminSession();
     if (!session?.id) {
       setSessionOk(false);
@@ -100,6 +102,10 @@ export function MasterOverview() {
       .catch(() => setError("Network error"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchRestaurants();
+  }, [fetchRestaurants]);
 
   const filtered = useMemo(() => {
     let list = restaurants;
@@ -178,7 +184,7 @@ export function MasterOverview() {
             </div>
             <button
               type="button"
-              onClick={() => router.push("/admin/master/restaurants?action=add")}
+              onClick={() => setAddModalOpen(true)}
               className="flex h-9 items-center gap-1.5 rounded-lg bg-[#062946] px-3 text-sm font-medium text-white transition hover:bg-[#062946]/90"
             >
               <Plus size={16} />
@@ -307,6 +313,12 @@ export function MasterOverview() {
 
       {/* Activity Feed */}
       {!loading && sessionOk && <MasterActivityFeed restaurants={restaurants} />}
+
+      <MasterAddCustomer
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        onCreated={fetchRestaurants}
+      />
     </div>
   );
 }

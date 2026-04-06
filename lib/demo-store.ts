@@ -1,0 +1,174 @@
+import fs from "fs";
+import path from "path";
+import type { GuestOrderMode, VenueFlow } from "@/lib/types";
+
+const DATA_DIR = path.join(process.cwd(), ".data");
+const STORE_PATH = path.join(DATA_DIR, "demo-store.json");
+
+export type DemoRestaurant = {
+  id: string;
+  name: string;
+  tier: "self_service" | "waiter_service";
+  status: "active" | "inactive";
+  plan: "starter" | "growth" | "pro";
+  planPrice: number;
+  currency: string;
+  paymentStatus: "paid" | "overdue";
+  createdAt: string;
+  ownerEmail?: string;
+  venueFlow: VenueFlow;
+  guestOrderMode: GuestOrderMode;
+};
+
+export type DemoTable = {
+  slug: string;
+  tableNumber: number;
+  restaurantId: string;
+};
+
+type StoreData = {
+  restaurants: DemoRestaurant[];
+  tables: DemoTable[];
+};
+
+const SEED_RESTAURANTS: DemoRestaurant[] = [
+  {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "7AM",
+    tier: "self_service",
+    status: "active",
+    plan: "growth",
+    planPrice: 99,
+    currency: "USD",
+    paymentStatus: "paid",
+    createdAt: "2025-12-01T08:00:00Z",
+    venueFlow: "dine_in",
+    guestOrderMode: "self_service",
+  },
+  {
+    id: "22222222-2222-2222-2222-222222222222",
+    name: "Open House",
+    tier: "waiter_service",
+    status: "active",
+    plan: "pro",
+    planPrice: 199,
+    currency: "USD",
+    paymentStatus: "overdue",
+    createdAt: "2026-01-15T10:00:00Z",
+    venueFlow: "dine_in",
+    guestOrderMode: "waiter_service",
+  },
+];
+
+const SEED_TABLES: DemoTable[] = [
+  { slug: "7am-1", tableNumber: 1, restaurantId: "11111111-1111-1111-1111-111111111111" },
+  { slug: "7am-2", tableNumber: 2, restaurantId: "11111111-1111-1111-1111-111111111111" },
+  { slug: "7am-3", tableNumber: 3, restaurantId: "11111111-1111-1111-1111-111111111111" },
+  { slug: "7am-4", tableNumber: 4, restaurantId: "11111111-1111-1111-1111-111111111111" },
+  { slug: "7am-5", tableNumber: 5, restaurantId: "11111111-1111-1111-1111-111111111111" },
+  { slug: "openhouse-1", tableNumber: 1, restaurantId: "22222222-2222-2222-2222-222222222222" },
+  { slug: "openhouse-2", tableNumber: 2, restaurantId: "22222222-2222-2222-2222-222222222222" },
+  { slug: "openhouse-3", tableNumber: 3, restaurantId: "22222222-2222-2222-2222-222222222222" },
+  { slug: "openhouse-4", tableNumber: 4, restaurantId: "22222222-2222-2222-2222-222222222222" },
+  { slug: "openhouse-5", tableNumber: 5, restaurantId: "22222222-2222-2222-2222-222222222222" },
+];
+
+function ensureDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function readStore(): StoreData {
+  try {
+    if (fs.existsSync(STORE_PATH)) {
+      const raw = fs.readFileSync(STORE_PATH, "utf-8");
+      const parsed = JSON.parse(raw) as StoreData;
+      if (Array.isArray(parsed.restaurants) && Array.isArray(parsed.tables)) {
+        return parsed;
+      }
+    }
+  } catch { /* corrupted – use seed */ }
+  return { restaurants: [], tables: [] };
+}
+
+function writeStore(data: StoreData) {
+  ensureDir();
+  fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2), "utf-8");
+}
+
+export function getAllRestaurants(): DemoRestaurant[] {
+  const stored = readStore();
+  const seedIds = new Set(SEED_RESTAURANTS.map((r) => r.id));
+  const extra = stored.restaurants.filter((r) => !seedIds.has(r.id));
+  return [...SEED_RESTAURANTS, ...extra];
+}
+
+export function getRestaurantById(id: string): DemoRestaurant | null {
+  return getAllRestaurants().find((r) => r.id === id) ?? null;
+}
+
+export function getTablesByRestaurantId(restaurantId: string): DemoTable[] {
+  const stored = readStore();
+  const allTables = [...SEED_TABLES, ...stored.tables];
+  return allTables.filter((t) => t.restaurantId === restaurantId);
+}
+
+export function getTableBySlug(slug: string): (DemoTable & { restaurant: DemoRestaurant }) | null {
+  const stored = readStore();
+  const allTables = [...SEED_TABLES, ...stored.tables];
+  const table = allTables.find((t) => t.slug === slug);
+  if (!table) return null;
+  const restaurant = getRestaurantById(table.restaurantId);
+  if (!restaurant) return null;
+  return { ...table, restaurant };
+}
+
+export function updateRestaurant(
+  id: string,
+  patch: Partial<Pick<DemoRestaurant, "tier" | "status" | "guestOrderMode">>
+): DemoRestaurant | null {
+  const stored = readStore();
+
+  const seed = SEED_RESTAURANTS.find((r) => r.id === id);
+  if (seed) {
+    const existing = stored.restaurants.find((r) => r.id === id);
+    const merged = existing ?? { ...seed };
+    Object.assign(merged, patch);
+    if (!existing) stored.restaurants.push(merged);
+    writeStore(stored);
+    return merged;
+  }
+
+  const idx = stored.restaurants.findIndex((r) => r.id === id);
+  if (idx === -1) return null;
+  Object.assign(stored.restaurants[idx], patch);
+  writeStore(stored);
+  return stored.restaurants[idx];
+}
+
+export function addRestaurant(
+  restaurant: DemoRestaurant,
+  numberOfTables: number
+): { restaurant: DemoRestaurant; tables: DemoTable[] } {
+  const stored = readStore();
+
+  stored.restaurants.push(restaurant);
+
+  const slug = restaurant.name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+$/, "");
+
+  const newTables: DemoTable[] = Array.from({ length: numberOfTables }, (_, i) => ({
+    slug: `${slug}-${i + 1}`,
+    tableNumber: i + 1,
+    restaurantId: restaurant.id,
+  }));
+
+  stored.tables.push(...newTables);
+  writeStore(stored);
+
+  return { restaurant, tables: newTables };
+}
