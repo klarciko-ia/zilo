@@ -35,8 +35,11 @@ export async function POST(
   const remaining = Number(order.remaining_amount);
 
   let newStatus: string = "partially_paid";
-  if (remaining <= 0) newStatus = "paid";
-  else if (newCashPending > 0) newStatus = "pending_cash";
+  if (newCashPending > 0) {
+    newStatus = "pending_cash";
+  } else if (remaining <= 0) {
+    newStatus = "paid";
+  }
 
   await db
     .from("table_orders")

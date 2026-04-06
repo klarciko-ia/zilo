@@ -1,16 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePayment } from "@/lib/payment-context";
 
-export function PercentagePaymentClient({ tableId }: { tableId: string }) {
-  const { ensureOrderFromCart, getPayablePercentages, getOrder } = usePayment();
+type Props = {
+  tableId: string;
+  tipPercent?: number;
+};
+
+const PEOPLE_OPTIONS = [2, 3, 4, 5, 6];
+
+export function PercentagePaymentClient({ tableId, tipPercent = 0 }: Props) {
+  const { ensureOrderFromCart, getOrder } = usePayment();
   const order = getOrder(tableId);
-  const options = getPayablePercentages(tableId);
-  const [customInput, setCustomInput] = useState("");
-  const [customError, setCustomError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!order);
+  const [selectedN, setSelectedN] = useState<number | null>(null);
+  const [customN, setCustomN] = useState("");
 
   useEffect(() => {
     if (order) return;
@@ -20,30 +26,6 @@ export function PercentagePaymentClient({ tableId }: { tableId: string }) {
     });
     return () => { cancelled = true; };
   }, [ensureOrderFromCart, order, tableId]);
-
-  const remaining = order?.remainingAmount ?? 0;
-
-  const customAmount = useMemo(() => {
-    const n = parseFloat(customInput.replace(",", "."));
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return Number(n.toFixed(2));
-  }, [customInput]);
-
-  const customHref =
-    customAmount != null && customAmount > 0 && customAmount <= remaining + 0.001
-      ? `/table/${tableId}/checkout/method?type=percentage_partial&amount=${customAmount.toFixed(2)}`
-      : null;
-
-  const onCustomContinue = () => {
-    setCustomError(null);
-    if (customAmount == null) {
-      setCustomError("Enter a valid amount.");
-      return;
-    }
-    if (customAmount > remaining + 0.001) {
-      setCustomError(`Maximum is ${remaining.toFixed(2)} MAD.`);
-    }
-  };
 
   if (loading) {
     return (
@@ -56,7 +38,7 @@ export function PercentagePaymentClient({ tableId }: { tableId: string }) {
   if (!order) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold">Pay by percentage</h1>
+        <h1 className="text-xl font-semibold">Split by People</h1>
         <p className="text-sm text-slate-600">No order available yet.</p>
         <Link
           href={`/table/${tableId}/checkout`}
@@ -68,74 +50,107 @@ export function PercentagePaymentClient({ tableId }: { tableId: string }) {
     );
   }
 
+  const remaining = order.remainingAmount;
+
+  if (remaining <= 0.01) {
+    return (
+      <div className="space-y-4 text-center">
+        <h1 className="text-xl font-semibold">Bill Fully Paid</h1>
+        <Link href={`/table/${tableId}/checkout`} className="block rounded-xl bg-brand px-4 py-3 text-center font-medium text-white">
+          Back to checkout
+        </Link>
+      </div>
+    );
+  }
+
+  const n = selectedN ?? (customN ? parseInt(customN, 10) : 0);
+  const isValidN = n >= 2;
+  const share = isValidN ? Number((remaining / n).toFixed(2)) : 0;
+  const tipShare = isValidN && tipPercent > 0 ? Number((share * tipPercent / 100).toFixed(2)) : 0;
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Pay by percentage</h1>
-      <p className="text-sm text-slate-600">
-        Remaining balance: <span className="font-medium">{remaining.toFixed(2)} MAD</span>
-      </p>
+    <div className="space-y-6 pb-20">
+      <header className="flex items-center gap-4">
+        <Link href={`/table/${tableId}/checkout`} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 shadow-soft backdrop-blur-sm transition hover:shadow-lift">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+        <h1 className="text-xl font-semibold tracking-tight text-brand">Split by people</h1>
+      </header>
 
-      <div className="space-y-2">
-        {options.map((option) => (
-          <Link
-            key={option.percent}
-            href={`/table/${tableId}/checkout/method?type=percentage_partial&amount=${option.amount.toFixed(2)}`}
-            className="block rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-100"
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{option.label}</span>
-              <span>{option.amount.toFixed(2)} MAD</span>
-            </div>
-          </Link>
-        ))}
+      <div className="glass-card rounded-2xl p-5">
+        <p className="text-sm text-slate-600">Remaining balance</p>
+        <p className="text-2xl font-bold tracking-tight text-brand">{remaining.toFixed(2)} MAD</p>
       </div>
 
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-        <label htmlFor="custom-amount" className="text-sm font-medium text-slate-800">
-          Custom amount (MAD)
-        </label>
-        <input
-          id="custom-amount"
-          inputMode="decimal"
-          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
-          placeholder={`Max ${remaining.toFixed(2)}`}
-          value={customInput}
-          onChange={(e) => {
-            setCustomInput(e.target.value);
-            setCustomError(null);
-          }}
-        />
-        {customError ? <p className="mt-2 text-sm text-red-600">{customError}</p> : null}
-        {customHref ? (
-          <Link
-            href={customHref}
-            onClick={(e) => {
-              if (customAmount != null && customAmount > remaining + 0.001) {
-                e.preventDefault();
-                setCustomError(`Maximum is ${remaining.toFixed(2)} MAD.`);
-              }
+      <div>
+        <p className="text-sm font-medium text-slate-700 mb-3">How many people are splitting?</p>
+        <div className="grid grid-cols-5 gap-2">
+          {PEOPLE_OPTIONS.map((num) => (
+            <button
+              key={num}
+              onClick={() => { setSelectedN(num); setCustomN(""); }}
+              type="button"
+              className={`rounded-2xl py-4 text-center text-lg font-bold transition-all ${
+                selectedN === num
+                  ? "bg-accent text-white shadow-lg shadow-accent/25 ring-2 ring-coral-mid/70"
+                  : "bg-white/90 text-slate-700 ring-1 ring-slate-200/80 shadow-soft hover:bg-coral-light/50"
+              }`}
+            >
+              {num}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder="Other number…"
+            min={2}
+            className={`w-full rounded-xl border bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-accent/40 focus:ring-2 focus:ring-accent/20 ${
+              customN && !selectedN ? "border-accent ring-2 ring-accent/25" : "border-slate-200"
+            }`}
+            value={customN}
+            onChange={(e) => {
+              setCustomN(e.target.value);
+              setSelectedN(null);
             }}
-            className="mt-3 block rounded-xl bg-brand px-4 py-3 text-center text-sm font-medium text-white"
-          >
-            Continue with {customAmount?.toFixed(2)} MAD
-          </Link>
-        ) : (
-          <button
-            type="button"
-            onClick={onCustomContinue}
-            className="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-500"
-          >
-            Enter an amount to continue
-          </button>
-        )}
+          />
+        </div>
       </div>
 
-      <Link
-        href={`/table/${tableId}/checkout`}
-        className="block rounded-xl border border-slate-300 px-4 py-3 text-center font-medium"
-      >
-        Back
-      </Link>
+      {isValidN && (
+        <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-5">
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-600">Your share ({remaining.toFixed(2)} ÷ {n})</span>
+            <span className="font-bold">{share.toFixed(2)} MAD</span>
+          </div>
+          {tipShare > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600">Tip ({tipPercent}%)</span>
+              <span className="font-medium">{tipShare.toFixed(2)} MAD</span>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold tracking-tight text-brand">
+            <span>Your total</span>
+            <span className="text-accent">{(share + tipShare).toFixed(2)} MAD</span>
+          </div>
+        </div>
+      )}
+
+      {isValidN && share > 0 ? (
+        <Link
+          href={`/table/${tableId}/checkout/method?type=split_n_partial&amount=${share.toFixed(2)}&tipPercent=${tipPercent}&tipAmount=${tipShare.toFixed(2)}`}
+          className="btn-primary block rounded-2xl py-4 text-center shadow-lg shadow-brand/25"
+        >
+          Pay {(share + tipShare).toFixed(2)} MAD
+        </Link>
+      ) : (
+        <button disabled className="block w-full rounded-2xl bg-slate-200 px-4 py-4 text-center font-bold text-slate-400">
+          Select number of people
+        </button>
+      )}
     </div>
   );
 }

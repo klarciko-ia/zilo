@@ -2,46 +2,74 @@
 
 import Link from "next/link";
 import { decodeSelections } from "@/lib/payment-flow";
+import { usePayment } from "@/lib/payment-context";
 
 type Props = {
   tableId: string;
   paymentType: string;
   amount: number;
   itemsRaw: string | null;
+  tipAmount?: number;
 };
 
-export function PaymentMethodClient({ tableId, paymentType, amount, itemsRaw }: Props) {
+export function PaymentMethodClient({ tableId, paymentType, amount, itemsRaw, tipAmount = 0 }: Props) {
+  const { getOrder } = usePayment();
+  const order = getOrder(tableId);
   const itemSelections = decodeSelections(itemsRaw);
   const safeType =
-    paymentType === "full" || paymentType === "percentage_partial" || paymentType === "item_partial"
+    paymentType === "full" || paymentType === "percentage_partial" || paymentType === "item_partial" || paymentType === "split_n_partial"
       ? paymentType
       : "full";
+
+  const remaining = order?.remainingAmount ?? amount;
+  const effectiveAmount = Math.min(amount, remaining);
+
   const base = `/table/${tableId}/checkout`;
   const itemsPart = itemSelections.length ? `&items=${encodeURIComponent(JSON.stringify(itemSelections))}` : "";
-  const payload = `type=${safeType}&amount=${amount.toFixed(2)}${itemsPart}`;
+  const tipPart = tipAmount > 0 ? `&tipAmount=${tipAmount.toFixed(2)}` : "";
+  const payload = `type=${safeType}&amount=${effectiveAmount.toFixed(2)}${itemsPart}${tipPart}`;
+
+  const total = effectiveAmount + tipAmount;
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Choose Payment Method</h1>
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-        <p className="text-sm text-slate-600">Amount to pay</p>
-        <p className="text-xl font-semibold">{amount.toFixed(2)} MAD</p>
+      <header className="flex items-center gap-4">
+        <Link href={`${base}`} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 shadow-soft backdrop-blur-sm transition hover:shadow-lift">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+        <h1 className="text-xl font-semibold tracking-tight text-brand">Choose payment method</h1>
+      </header>
+
+      <div className="glass-card space-y-1 rounded-2xl p-5">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-600">Order amount</span>
+          <span className="font-medium">{effectiveAmount.toFixed(2)} MAD</span>
+        </div>
+        {tipAmount > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-600">Tip</span>
+            <span className="font-medium">{tipAmount.toFixed(2)} MAD</span>
+          </div>
+        )}
+        <div className="border-t border-slate-100 pt-2 flex justify-between">
+          <span className="text-sm text-slate-600">Total</span>
+          <span className="text-xl font-semibold">{total.toFixed(2)} MAD</span>
+        </div>
       </div>
 
       <Link
         href={`${base}/card?${payload}`}
-        className="block rounded-xl bg-brand px-4 py-3 text-center font-medium text-white"
+        className="block rounded-2xl bg-brand px-4 py-4 text-center font-semibold text-white shadow-lg shadow-brand/25 transition hover:shadow-lift active:scale-[0.99]"
       >
-        Pay by Card
+        Pay by card
       </Link>
       <Link
         href={`${base}/cash?${payload}`}
-        className="block rounded-xl border border-slate-300 px-4 py-3 text-center font-medium"
+        className="block rounded-2xl border border-slate-200/90 bg-white/80 px-4 py-4 text-center font-semibold text-brand backdrop-blur-sm transition hover:border-coral-mid/60 hover:shadow-soft"
       >
-        Pay with Cash
-      </Link>
-      <Link href={base} className="block rounded-xl px-4 py-3 text-center text-sm text-slate-600">
-        Back
+        Pay with cash
       </Link>
     </div>
   );

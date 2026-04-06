@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeSelections } from "@/lib/payment-flow";
 import { usePayment } from "@/lib/payment-context";
@@ -12,22 +12,40 @@ type Props = {
   paymentTypeRaw: string;
   amount: number;
   itemsRaw: string | null;
+  tipAmount?: number;
 };
 
 function toPaymentType(value: string): PaymentType {
   if (value === "percentage_partial") return "percentage_partial";
   if (value === "item_partial") return "item_partial";
+  if (value === "split_n_partial") return "split_n_partial";
   return "full";
 }
 
-export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw }: Props) {
+export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, tipAmount = 0 }: Props) {
   const router = useRouter();
-  const { applyPayment } = usePayment();
+  const { applyPayment, getOrder, ensureOrderFromCart } = usePayment();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const paymentType = toPaymentType(paymentTypeRaw);
   const itemSelections = decodeSelections(itemsRaw);
+
+  const order = getOrder(tableId);
+  const remaining = order?.remainingAmount ?? amount;
+  const effectiveAmount = Math.min(amount, remaining);
+  const total = effectiveAmount + tipAmount;
+  const isFullyPaid = remaining <= 0.01;
+
+  useEffect(() => {
+    if (!order) { ensureOrderFromCart(tableId); }
+  }, [order, tableId, ensureOrderFromCart]);
+
+  useEffect(() => {
+    if (isFullyPaid) { router.replace(`/table/${tableId}/checkout`); }
+  }, [isFullyPaid, router, tableId]);
+
+  if (isFullyPaid) return null;
 
   const onConfirmCash = async () => {
     setLoading(true);
@@ -36,7 +54,8 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw }:
       tableId,
       paymentMethod: "cash",
       paymentType,
-      amount,
+      amount: effectiveAmount,
+      tipAmount,
       itemSelections,
     });
     if (!result.ok) {
@@ -45,25 +64,44 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw }:
       return;
     }
     router.push(
-      `/table/${tableId}/checkout/success?method=cash&amount=${amount.toFixed(2)}&paymentId=${result.paymentId}`
+      `/table/${tableId}/checkout/success?method=cash&amount=${effectiveAmount.toFixed(2)}&tip=${tipAmount.toFixed(2)}&paymentId=${result.paymentId}`
     );
   };
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Pay with cash</h1>
+      <header className="flex items-center gap-4">
+        <Link href={`/table/${tableId}/checkout`} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 shadow-soft backdrop-blur-sm transition hover:shadow-lift">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+        <h1 className="text-xl font-semibold tracking-tight text-brand">Pay with cash</h1>
+      </header>
 
       <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
         <p className="text-sm font-medium text-amber-950">Pay your waiter</p>
         <p className="mt-1 text-sm text-amber-900">
-          Please give <span className="font-semibold">{amount.toFixed(2)} MAD</span> in cash to your
+          Please give <span className="font-semibold">{total.toFixed(2)} MAD</span> in cash to your
           server or at the counter. We will mark this payment as pending until staff confirms it.
         </p>
       </div>
 
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-        <p className="text-sm text-slate-600">Amount</p>
-        <p className="text-xl font-semibold">{amount.toFixed(2)} MAD</p>
+      <div className="glass-card space-y-1 rounded-2xl p-5">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-600">Order amount</span>
+          <span>{effectiveAmount.toFixed(2)} MAD</span>
+        </div>
+        {tipAmount > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-600">Tip</span>
+            <span>{tipAmount.toFixed(2)} MAD</span>
+          </div>
+        )}
+        <div className="border-t border-slate-100 pt-2 flex justify-between">
+          <span className="text-sm text-slate-600">Total</span>
+          <span className="text-xl font-semibold">{total.toFixed(2)} MAD</span>
+        </div>
       </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -72,17 +110,10 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw }:
         type="button"
         onClick={onConfirmCash}
         disabled={loading}
-        className="block w-full rounded-xl bg-brand px-4 py-3 text-center font-medium text-white disabled:opacity-60"
+        className="block w-full rounded-2xl bg-brand px-4 py-4 text-center font-semibold text-white shadow-lg shadow-brand/25 transition hover:shadow-lift disabled:opacity-60"
       >
         {loading ? "Saving…" : "I paid / will pay cash — mark as pending"}
       </button>
-
-      <Link
-        href={`/table/${tableId}/checkout/method?type=${paymentType}&amount=${amount.toFixed(2)}${itemsRaw ? `&items=${encodeURIComponent(itemsRaw)}` : ""}`}
-        className="block rounded-xl border border-slate-300 px-4 py-3 text-center font-medium"
-      >
-        Back
-      </Link>
     </div>
   );
 }

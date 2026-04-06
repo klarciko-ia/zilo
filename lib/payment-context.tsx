@@ -26,6 +26,7 @@ type ApplyPaymentInput = {
   paymentMethod: PaymentMethod;
   paymentType: PaymentType;
   amount: number;
+  tipAmount?: number;
   itemSelections?: Array<{ menuItemId: string; quantity: number }>;
 };
 
@@ -51,6 +52,8 @@ type PaymentContextValue = {
     redirectedToGoogle: boolean;
   }) => Promise<ReviewResult>;
   getAllReviews: () => ReviewRecord[];
+  /** Reload open bill from API after server-side changes (e.g. send to kitchen). */
+  refreshOrderFromServer: (tableId: string) => Promise<void>;
 };
 
 type OrderMap = Record<string, TableOrderState>;
@@ -58,6 +61,13 @@ const STORAGE_KEY = "zilo_order_map_v1";
 const REVIEWS_STORAGE_KEY = "zilo_reviews_v1";
 
 const PaymentContext = createContext<PaymentContextValue | null>(null);
+
+function isSupabaseClientConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
 
 /* ──────────── helpers ──────────── */
 
@@ -171,6 +181,16 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const refreshOrderFromServer = useCallback(async (tableId: string) => {
+    const fresh = await fetchOrderApi(tableId);
+    setOrderMap((prev) => {
+      if (fresh) return { ...prev, [tableId]: fresh };
+      const next = { ...prev };
+      delete next[tableId];
+      return next;
+    });
+  }, [fetchOrderApi]);
+
   const createOrderApi = useCallback(
     async (
       tableId: string,
@@ -197,6 +217,44 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  /** Ensures a server row exists so /api/payments and admin dashboard see the bill. */
+  const ensureServerOrderId = useCallback(
+    async (
+      tableId: string,
+      order: TableOrderState
+    ): Promise<TableOrderState | null> => {
+      if (order.orderId) return order;
+
+      const remote = await fetchOrderApi(tableId);
+      if (remote?.orderId) {
+        setOrderMap((prev) => ({ ...prev, [tableId]: remote }));
+        return remote;
+      }
+
+      const items = order.orderItems
+        .map((oi) => ({
+          menuItemId: oi.menuItemId,
+          name: oi.name,
+          unitPrice: oi.unitPrice,
+          quantity:
+            oi.quantityRemaining > 0 ? oi.quantityRemaining : oi.quantityTotal,
+        }))
+        .filter((i) => i.quantity > 0);
+      if (!items.length) return null;
+
+      const newId = await createOrderApi(tableId, items);
+      if (!newId) return null;
+
+      const full = await fetchOrderApi(tableId);
+      if (full?.orderId) {
+        setOrderMap((prev) => ({ ...prev, [tableId]: full }));
+        return full;
+      }
+      return null;
+    },
+    [fetchOrderApi, createOrderApi]
+  );
+
   /* ── context methods ── */
 
   const getOrder = useCallback(
@@ -215,6 +273,13 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   const ensureOrderFromCart = useCallback(
     async (tableId: string): Promise<TableOrderState | null> => {
       const existing = mapRef.current[tableId];
+      if (existing?.orderId) return existing;
+
+      if (existing && isSupabaseClientConfigured()) {
+        const synced = await ensureServerOrderId(tableId, existing);
+        if (synced) return synced;
+      }
+
       if (existing) return existing;
 
       const apiOrder = await fetchOrderApi(tableId);
@@ -260,7 +325,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       setOrderMap((prev) => ({ ...prev, [tableId]: next }));
       return next;
     },
-    [fetchOrderApi, createOrderApi, getCartLines]
+    [fetchOrderApi, createOrderApi, getCartLines, ensureServerOrderId]
   );
 
   const getPayablePercentages = useCallback((tableId: string) => {
@@ -283,17 +348,31 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       paymentMethod,
       paymentType,
       amount,
+      tipAmount = 0,
       itemSelections,
     }: ApplyPaymentInput): Promise<MutationResult> => {
-      const order = mapRef.current[tableId];
+      let order = mapRef.current[tableId];
       if (!order)
         return { ok: false, error: "No active order for this table." };
       if (amount <= 0)
         return { ok: false, error: "Payment amount must be greater than zero." };
+
+      if (isSupabaseClientConfigured()) {
+        const synced = await ensureServerOrderId(tableId, order);
+        if (!synced?.orderId) {
+          return {
+            ok: false,
+            error:
+              "Could not open a bill on the restaurant system. Check your connection and try again.",
+          };
+        }
+        order = synced;
+      }
+
       if (amount - order.remainingAmount > 0.001)
         return { ok: false, error: "Cannot pay more than remaining balance." };
 
-      /* ── try API ── */
+      /* ── API (required when Supabase is configured) ── */
       if (order.orderId) {
         try {
           const apiItems = itemSelections
@@ -315,6 +394,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
               paymentType,
               paymentMethod,
               amount,
+              tipAmount: tipAmount || undefined,
               itemSelections: apiItems?.length ? apiItems : undefined,
             }),
           });
@@ -330,11 +410,24 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           const errBody = await res.json().catch(() => ({}));
           return { ok: false, error: errBody.error || "Payment failed" };
         } catch {
-          /* fall through to localStorage */
+          if (isSupabaseClientConfigured()) {
+            return {
+              ok: false,
+              error:
+                "Network error — payment was not saved. Try again when online.",
+            };
+          }
         }
       }
 
-      /* ── localStorage fallback ── */
+      if (isSupabaseClientConfigured()) {
+        return {
+          ok: false,
+          error: "Payment could not be recorded. Try again.",
+        };
+      }
+
+      /* ── localStorage fallback (no Supabase / demo mode) ── */
       let nextOrderItems = order.orderItems;
       if (paymentType === "item_partial") {
         if (!itemSelections?.length)
@@ -377,6 +470,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       const payment: PaymentRecord = {
         id: paymentId,
         amount,
+        tipAmount: tipAmount || undefined,
         paymentMethod,
         paymentType,
         status: paymentMethod === "cash" ? "pending_cash_confirm" : "completed",
@@ -406,7 +500,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       }));
       return { ok: true, paymentId };
     },
-    [fetchOrderApi]
+    [fetchOrderApi, ensureServerOrderId]
   );
 
   const confirmCashReceived = useCallback(
@@ -530,6 +624,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       confirmCashReceived,
       submitReview,
       getAllReviews,
+      refreshOrderFromServer,
     }),
     [
       getOrder,
@@ -540,6 +635,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       confirmCashReceived,
       submitReview,
       getAllReviews,
+      refreshOrderFromServer,
     ]
   );
 

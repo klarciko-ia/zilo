@@ -6,11 +6,12 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const db = getSupabase();
   const body = await req.json();
-  const { orderId, paymentType, paymentMethod, amount, itemSelections } = body as {
+  const { orderId, paymentType, paymentMethod, amount, tipAmount, itemSelections } = body as {
     orderId: string;
-    paymentType: "full" | "percentage_partial" | "item_partial";
+    paymentType: "full" | "percentage_partial" | "item_partial" | "split_n_partial";
     paymentMethod: "card" | "cash";
     amount: number;
+    tipAmount?: number;
     itemSelections?: Array<{ orderItemId: string; quantity: number }>;
   };
 
@@ -34,11 +35,14 @@ export async function POST(req: NextRequest) {
 
   const status = paymentMethod === "cash" ? "pending_cash_confirm" : "completed";
 
+  const dbPaymentType: "full" | "percentage_partial" | "item_partial" =
+    paymentType === "split_n_partial" ? "percentage_partial" : paymentType as "full" | "percentage_partial" | "item_partial";
+
   const { data: payment, error: payErr } = await db
     .from("payments")
     .insert({
       order_id: orderId,
-      payment_type: paymentType,
+      payment_type: dbPaymentType,
       payment_method: paymentMethod,
       amount,
       status,
@@ -63,9 +67,13 @@ export async function POST(req: NextRequest) {
   const newCashPending = Number(order.amount_cash_pending) + (paymentMethod === "cash" ? amount : 0);
   const newRemaining = Math.max(0, Number(order.remaining_amount) - amount);
 
+  /* Keep order visible for staff until all cash-in-hand is confirmed */
   let newStatus: string = "partially_paid";
-  if (newRemaining <= 0) newStatus = "paid";
-  else if (newCashPending > 0) newStatus = "pending_cash";
+  if (newCashPending > 0) {
+    newStatus = "pending_cash";
+  } else if (newRemaining <= 0) {
+    newStatus = "paid";
+  }
 
   await db
     .from("table_orders")

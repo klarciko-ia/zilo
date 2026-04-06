@@ -6,7 +6,7 @@ export default function SuccessPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { amount?: string; method?: string; paymentId?: string };
+  searchParams: { amount?: string; method?: string; paymentId?: string; tip?: string };
 }) {
   const amount = Number(searchParams.amount ?? "0");
   if (!amount || amount <= 0) return notFound();
@@ -17,6 +17,7 @@ export default function SuccessPage({
       amount={amount}
       method={searchParams.method ?? "card"}
       paymentId={searchParams.paymentId}
+      tipAmount={Number(searchParams.tip ?? "0")}
     />
   );
 }

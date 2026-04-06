@@ -1,5 +1,5 @@
-import { MasterRestaurantsClient } from "@/components/master/master-restaurants-client";
+import { MasterOverview } from "@/components/master/master-overview";
 
 export default function MasterRestaurantsPage() {
-  return <MasterRestaurantsClient />;
+  return <MasterOverview />;
 }

@@ -4,48 +4,171 @@
 
 @layer base {
   body {
-    @apply text-slate-900 antialiased min-h-screen selection:bg-red-100;
-    background-color: #ffffff;
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(255, 59, 48, 0.05) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(0, 0, 0, 0.02) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, rgba(255, 59, 48, 0.02) 0px, transparent 50%);
+    @apply text-slate-900 antialiased min-h-screen selection:bg-coral-light;
+    background-color: #fdfcfb;
+    background-image:
+      radial-gradient(at 0% 0%, rgba(255, 107, 91, 0.04) 0px, transparent 52%),
+      radial-gradient(at 100% 0%, rgba(26, 26, 46, 0.03) 0px, transparent 48%),
+      radial-gradient(at 50% 100%, rgba(255, 107, 91, 0.03) 0px, transparent 55%);
     background-attachment: fixed;
     font-feature-settings: "cv02", "cv03", "cv04", "ss01";
   }
 }
 
 .glass-card {
-  @apply bg-white/60 backdrop-blur-3xl border border-white/60 shadow-premium shadow-black/[0.02] ring-1 ring-black/[0.03];
+  @apply bg-white/70 backdrop-blur-[40px] border border-white/70 shadow-premium ring-1 ring-brand/[0.04];
+  box-shadow:
+    0 20px 50px rgba(26, 26, 46, 0.06),
+    0 0 0 1px rgba(255, 107, 91, 0.06);
 }
 
 .btn-primary {
-  @apply bg-black text-white rounded-[2rem] px-8 py-5 font-bold transition-all active:scale-95 hover:shadow-2xl hover:shadow-black/20 shadow-xl shadow-black/10 flex items-center justify-center gap-3;
+  @apply bg-brand text-white rounded-[2rem] px-8 py-5 font-bold transition-all active:scale-[0.98] hover:shadow-2xl hover:shadow-accent/15 shadow-xl shadow-brand/15 flex items-center justify-center gap-3;
 }
 
 .btn-accent {
-  @apply bg-[#FF3B30] text-white rounded-[2rem] px-8 py-5 font-bold transition-all active:scale-95 hover:shadow-2xl hover:shadow-red-500/30 shadow-xl shadow-red-500/20 flex items-center justify-center gap-3;
+  @apply bg-accent text-white rounded-[2rem] px-8 py-5 font-bold transition-all active:scale-[0.98] hover:shadow-2xl hover:shadow-accent/35 shadow-xl shadow-accent/25 flex items-center justify-center gap-3;
 }
 
 .price-tag {
   @apply font-mono font-bold tracking-tighter;
 }
 
-/* 2026 Qlub-style Animations */
+.chip-active {
+  @apply bg-accent text-white border-accent shadow-md shadow-accent/20;
+}
+
 .reveal-item {
-  animation: reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes reveal {
-  from { opacity: 0; transform: translateY(20px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
-/* Custom Mesh Gradient Background Element */
-.bg-mesh {
+/* Master CRM style (requested visual direction) */
+.crm-bg {
+  background: #f6e2cf;
+}
+
+.crm-sidebar {
+  background: #062946;
+  color: #dfeaf3;
+}
+
+.crm-sidebar-item {
+  display: block;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+  color: #dfeaf3;
+  transition:
+    background-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.crm-sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(2px);
+}
+
+.crm-sidebar-item-active {
+  background: #6f3ca7;
+  color: #fff;
+}
+
+.crm-card {
+  border-radius: 0.55rem;
+  color: #fff;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    filter 140ms ease;
+}
+
+.crm-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 14px rgba(2, 14, 25, 0.18);
+  filter: saturate(1.04);
+}
+
+.crm-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.1rem;
+  width: 2.1rem;
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.crm-card-pink {
+  background: #ef4b9a;
+}
+
+.crm-card-purple {
+  background: #7e35c8;
+}
+
+.crm-card-blue {
+  background: #3ca0d1;
+}
+
+.crm-card-orange {
+  background: #e89a36;
+}
+
+.crm-btn-action {
+  border-radius: 9999px;
+  background: #ff5b4d;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 0.55rem 1rem;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    filter 120ms ease;
+}
+
+.crm-btn-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(255, 91, 77, 0.3);
+  filter: brightness(1.02);
+}
+
+.crm-btn-action:active {
+  transform: translateY(0);
+}
+
+.crm-panel {
+  border-radius: 0.55rem;
+  border: 1px solid #e7cdb6;
+  background: #f8e9d9;
+}
+
+/* Static warm wash — Clean Luxe (no rotation) */
+.bg-luxe-wash {
   position: fixed;
   top: 0;
   left: 0;
@@ -54,20 +177,9 @@
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
-}
-
-.bg-mesh::before {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 59, 48, 0.03) 0%, transparent 50%);
-  animation: rotate 20s linear infinite;
-}
-
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  background: radial-gradient(
+    ellipse 120% 80% at 50% -10%,
+    rgba(255, 107, 91, 0.06) 0%,
+    transparent 55%
+  );
 }

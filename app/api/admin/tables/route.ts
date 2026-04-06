@@ -1,15 +1,34 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { getAdminById } from "@/lib/admin-server";
+import { restaurantFilterForAdmin } from "@/lib/admin-api-scope";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getSupabase();
+  const adminId = req.nextUrl.searchParams.get("adminId");
+  const restaurantIdParam = req.nextUrl.searchParams.get("restaurantId");
 
-  const { data: tables } = await db
+  let restaurantFilter: string | null = null;
+  if (adminId) {
+    const admin = await getAdminById(db, adminId);
+    if (!admin) {
+      return NextResponse.json({ error: "Invalid admin" }, { status: 401 });
+    }
+    restaurantFilter = restaurantFilterForAdmin(admin, restaurantIdParam);
+  }
+
+  let q = db
     .from("restaurant_tables")
     .select("id, table_number, qr_slug, restaurant_id, restaurants(id, name)")
     .order("table_number");
+
+  if (restaurantFilter) {
+    q = q.eq("restaurant_id", restaurantFilter);
+  }
+
+  const { data: tables } = await q;
 
   if (!tables?.length) {
     return NextResponse.json({ tables: [] });

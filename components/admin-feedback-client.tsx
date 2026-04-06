@@ -38,10 +38,10 @@ export function AdminFeedbackClient() {
     <AdminGuard>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-semibold">Internal feedback</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-brand">Internal feedback</h1>
           <Link
             href="/admin/dashboard"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium"
+            className="rounded-lg border border-slate-200/90 bg-white/80 px-3 py-2 text-sm font-medium text-brand backdrop-blur-sm transition hover:border-coral-mid/50"
           >
             Tables
           </Link>
@@ -53,14 +53,14 @@ export function AdminFeedbackClient() {
         {loading ? (
           <p className="text-sm text-slate-500">Loading…</p>
         ) : reviews.length === 0 ? (
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="glass-card rounded-2xl p-5">
             <p className="text-sm text-slate-600">No internal feedback yet.</p>
           </div>
         ) : (
           reviews.map((row) => (
             <article
               key={row.id}
-              className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100"
+              className="glass-card rounded-2xl p-5"
             >
               <p className="text-sm font-medium">
                 {row.tableSlug ? `Table ${row.tableSlug}` : "Unknown table"} · {row.rating} / 5

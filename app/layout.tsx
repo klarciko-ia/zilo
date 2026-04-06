@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Inter } from "next/font/google";
 import { CartProvider } from "@/lib/cart-context";
 import { PaymentProvider } from "@/lib/payment-context";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap"
+});
 
 export const metadata: Metadata = {
   title: "Zilo QR Payments",
@@ -13,13 +20,11 @@ export default function RootLayout({
   children
 }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={inter.variable}>
+      <body className={`${inter.className} font-sans`}>
         <CartProvider>
           <PaymentProvider>
-            <main className="mx-auto min-h-screen w-full max-w-md px-4 py-4">
-              {children}
-            </main>
+            {children}
           </PaymentProvider>
         </CartProvider>
       </body>

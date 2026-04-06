@@ -89,10 +89,10 @@ export function CartClient({ tableId }: { tableId: string }) {
           Clear
         </button>
         <Link
-          href={`/table/${tableId}/checkout`}
+          href={`/table/${tableId}/order-review`}
           className="rounded-xl bg-brand px-4 py-3 text-center font-medium text-white"
         >
-          Checkout
+          Review & continue
         </Link>
       </div>
     </div>

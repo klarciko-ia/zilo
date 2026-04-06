@@ -8,13 +8,18 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"]
+      },
       colors: {
-        brand: "#000000",
-        accent: "#FF3B30", // Vibrant Red (Apple style)
-        success: "#34C759", // iOS Green
-        warning: "#FF9500", // iOS Orange
-        surface: "rgba(255, 255, 255, 0.8)",
-        "glass-border": "rgba(0, 0, 0, 0.08)"
+        brand: "#1A1A2E",
+        accent: "#FF6B5B",
+        "coral-light": "#FFF0ED",
+        "coral-mid": "#FFDDD6",
+        success: "#34C759",
+        warning: "#FF9500",
+        surface: "rgba(255, 255, 255, 0.72)",
+        "glass-border": "rgba(0, 0, 0, 0.06)"
       },
       borderRadius: {
         "2xl": "24px",
@@ -23,17 +28,18 @@ const config: Config = {
       boxShadow: {
         soft: "0 8px 30px rgba(0, 0, 0, 0.04)",
         glass: "0 4px 30px rgba(0, 0, 0, 0.03)",
-        'premium': '0 20px 50px rgba(0, 0, 0, 0.08)',
-        'inner-glow': 'inset 0 1px 1px rgba(255, 255, 255, 0.8)'
+        premium: "0 20px 50px rgba(26, 26, 46, 0.07)",
+        "inner-glow": "inset 0 1px 1px rgba(255, 255, 255, 0.85)",
+        "lift": "0 12px 40px rgba(26, 26, 46, 0.08)"
       },
       animation: {
-        'float': 'float 6s ease-in-out infinite',
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        float: "float 6s ease-in-out infinite",
+        "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite"
       },
       keyframes: {
         float: {
-          '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-10px)' },
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" }
         }
       }
     }
