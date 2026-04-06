@@ -28,7 +28,7 @@ export default function RestaurantLoginPage() {
       setLoading(false);
       return;
     }
-    router.push("/admin/dashboard");
+    router.push("/admin/restaurant");
   };
 
   return (
