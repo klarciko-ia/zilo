@@ -5,16 +5,24 @@
   "scripts": {
     "clean": "rm -rf .next",
     "dev": "sh -c 'ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true; export WATCHPACK_POLLING=1000; exec next dev --turbo'",
+    "dev:all": "node scripts/dev-with-urls.mjs",
     "dev:webpack": "sh -c 'ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true; export WATCHPACK_POLLING=1000; exec next dev'",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:smoke": "node scripts/smoke.mjs",
+    "db:venue-flow": "node scripts/apply-venue-flow.mjs",
+    "db:guest-order-mode": "node scripts/apply-guest-order-mode.mjs",
+    "db:sync-restaurant-schema": "node scripts/apply-restaurant-schema.mjs"
   },
   "dependencies": {
+    "@stripe/stripe-js": "^9.0.1",
+    "@supabase/supabase-js": "2.45.1",
+    "lucide-react": "^1.7.0",
     "next": "14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "@supabase/supabase-js": "2.45.1"
+    "stripe": "^22.0.0"
   },
   "devDependencies": {
     "@types/node": "20.14.12",
@@ -23,6 +31,7 @@
     "autoprefixer": "10.4.19",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35",
+    "pg": "8.13.1",
     "postcss": "8.4.39",
     "tailwindcss": "3.4.7",
     "typescript": "5.5.4"
