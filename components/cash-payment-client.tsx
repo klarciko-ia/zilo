@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { decodeSelections } from "@/lib/payment-flow";
 import { usePayment } from "@/lib/payment-context";
 import { PaymentType } from "@/lib/types";
+import type { Currency } from "@/lib/types";
+import { formatCurrency } from "@/lib/format-currency";
 
 type Props = {
   tableId: string;
@@ -13,6 +15,7 @@ type Props = {
   amount: number;
   itemsRaw: string | null;
   tipAmount?: number;
+  currency?: string;
 };
 
 function toPaymentType(value: string): PaymentType {
@@ -22,7 +25,7 @@ function toPaymentType(value: string): PaymentType {
   return "full";
 }
 
-export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, tipAmount = 0 }: Props) {
+export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, tipAmount = 0, currency = "MAD" }: Props) {
   const router = useRouter();
   const { applyPayment, getOrder, ensureOrderFromCart } = usePayment();
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +85,7 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
       <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
         <p className="text-sm font-medium text-amber-950">Pay your waiter</p>
         <p className="mt-1 text-sm text-amber-900">
-          Please give <span className="font-semibold">{total.toFixed(2)} MAD</span> in cash to your
+          Please give <span className="font-semibold">{formatCurrency(total, currency as Currency)}</span> in cash to your
           server or at the counter. We will mark this payment as pending until staff confirms it.
         </p>
       </div>
@@ -90,17 +93,17 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
       <div className="glass-card space-y-1 rounded-2xl p-5">
         <div className="flex justify-between text-sm">
           <span className="text-slate-600">Order amount</span>
-          <span>{effectiveAmount.toFixed(2)} MAD</span>
+          <span>{formatCurrency(effectiveAmount, currency as Currency)}</span>
         </div>
         {tipAmount > 0 && (
           <div className="flex justify-between text-sm">
             <span className="text-slate-600">Tip</span>
-            <span>{tipAmount.toFixed(2)} MAD</span>
+            <span>{formatCurrency(tipAmount, currency as Currency)}</span>
           </div>
         )}
         <div className="border-t border-slate-100 pt-2 flex justify-between">
           <span className="text-sm text-slate-600">Total</span>
-          <span className="text-xl font-semibold">{total.toFixed(2)} MAD</span>
+          <span className="text-xl font-semibold">{formatCurrency(total, currency as Currency)}</span>
         </div>
       </div>
 

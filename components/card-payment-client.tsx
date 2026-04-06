@@ -6,6 +6,8 @@ import Link from "next/link";
 import { decodeSelections } from "@/lib/payment-flow";
 import { usePayment } from "@/lib/payment-context";
 import { PaymentType } from "@/lib/types";
+import type { Currency } from "@/lib/types";
+import { formatCurrency } from "@/lib/format-currency";
 
 type Props = {
   tableId: string;
@@ -136,17 +138,17 @@ export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
           <div className="glass-card space-y-1 rounded-2xl p-5">
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">Order amount</span>
-              <span>{effectiveAmount.toFixed(2)} MAD</span>
+              <span>{formatCurrency(effectiveAmount, currency as Currency)}</span>
             </div>
             {tipAmount > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Tip</span>
-                <span>{tipAmount.toFixed(2)} MAD</span>
+                <span>{formatCurrency(tipAmount, currency as Currency)}</span>
               </div>
             )}
             <div className="border-t border-slate-100 pt-2 flex justify-between">
               <span className="text-sm text-slate-600">Total charge</span>
-              <span className="text-xl font-semibold">{total.toFixed(2)} MAD</span>
+              <span className="text-xl font-semibold">{formatCurrency(total, currency as Currency)}</span>
             </div>
           </div>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -156,7 +158,7 @@ export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
             disabled={loading}
             className="block w-full rounded-2xl bg-brand px-4 py-4 text-center font-semibold text-white shadow-lg shadow-brand/25 transition hover:shadow-lift disabled:opacity-60"
           >
-            {loading ? "Processing…" : `Pay ${total.toFixed(2)} MAD`}
+            {loading ? "Processing…" : `Pay ${formatCurrency(total, currency as Currency)}`}
           </button>
         </>
       )}

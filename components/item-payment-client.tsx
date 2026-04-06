@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { encodeSelections } from "@/lib/payment-flow";
 import { usePayment } from "@/lib/payment-context";
+import { formatCurrency } from "@/lib/format-currency";
+import type { Currency } from "@/lib/types";
 
 type Props = {
   tableId: string;
   tipPercent?: number;
+  currency?: string;
 };
 
-export function ItemPaymentClient({ tableId, tipPercent = 0 }: Props) {
+export function ItemPaymentClient({ tableId, tipPercent = 0, currency = "MAD" }: Props) {
   const { ensureOrderFromCart, getOrder } = usePayment();
   const order = getOrder(tableId);
   const [selectedQtyMap, setSelectedQtyMap] = useState<Record<string, number>>({});
@@ -98,7 +101,7 @@ export function ItemPaymentClient({ tableId, tipPercent = 0 }: Props) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-slate-600">{item.unitPrice.toFixed(2)} MAD each</p>
+                    <p className="text-sm text-slate-600">{formatCurrency(item.unitPrice, currency as Currency)} each</p>
                     <p className="text-xs text-slate-500">
                       Remaining: {item.quantityRemaining} / Total: {item.quantityTotal}
                     </p>
@@ -146,7 +149,7 @@ export function ItemPaymentClient({ tableId, tipPercent = 0 }: Props) {
               <div className="flex justify-between">
                 <div>
                   <p className="font-medium text-slate-500 line-through">{item.name}</p>
-                  <p className="text-xs text-slate-400">{item.quantityTotal} × {item.unitPrice.toFixed(2)} MAD</p>
+                  <p className="text-xs text-slate-400">{item.quantityTotal} × {formatCurrency(item.unitPrice, currency as Currency)}</p>
                 </div>
                 <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full self-start">Paid</span>
               </div>
@@ -158,12 +161,12 @@ export function ItemPaymentClient({ tableId, tipPercent = 0 }: Props) {
       <div className="fixed bottom-4 left-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 space-y-3 rounded-2xl bg-brand px-5 py-4 text-white shadow-[0_20px_50px_-12px_rgba(26,26,46,0.45)] ring-1 ring-white/10">
         <div className="flex items-center justify-between text-sm">
           <span className="text-white/60">Selected items</span>
-          <span>{selectedAmount.toFixed(2)} MAD</span>
+          <span>{formatCurrency(selectedAmount, currency as Currency)}</span>
         </div>
         {tipAmount > 0 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-white/60">Tip ({tipPercent}%)</span>
-            <span>{tipAmount.toFixed(2)} MAD</span>
+            <span>{formatCurrency(tipAmount, currency as Currency)}</span>
           </div>
         )}
         {selectedAmount > 0 ? (
@@ -171,7 +174,7 @@ export function ItemPaymentClient({ tableId, tipPercent = 0 }: Props) {
             href={`/table/${tableId}/checkout/method?type=item_partial&amount=${selectedAmount.toFixed(2)}&tipPercent=${tipPercent}&tipAmount=${tipAmount.toFixed(2)}&items=${encoded}`}
             className="block rounded-xl bg-white px-3 py-3 text-center font-bold text-brand transition hover:bg-accent hover:text-white"
           >
-            Pay {(selectedAmount + tipAmount).toFixed(2)} MAD
+            Pay {formatCurrency(selectedAmount + tipAmount, currency as Currency)}
           </Link>
         ) : (
           <button

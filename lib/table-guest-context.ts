@@ -12,6 +12,7 @@ export type TableGuestContext = {
   restaurantName: string;
   venueFlow: VenueFlow;
   guestOrderMode: GuestOrderMode;
+  currency: string;
 };
 
 function resolveFromLocalData(qrSlug: string): TableGuestContext | null {
@@ -24,6 +25,7 @@ function resolveFromLocalData(qrSlug: string): TableGuestContext | null {
       restaurantName: sampleRestaurant.name,
       venueFlow: sampleRestaurant.venueFlow,
       guestOrderMode: sampleRestaurant.guestOrderMode,
+      currency: "MAD",
     };
   }
 
@@ -36,6 +38,7 @@ function resolveFromLocalData(qrSlug: string): TableGuestContext | null {
       restaurantName: demoHit.restaurant.name,
       venueFlow: demoHit.restaurant.venueFlow,
       guestOrderMode: demoHit.restaurant.guestOrderMode,
+      currency: demoHit.restaurant.currency || "USD",
     };
   }
 
@@ -75,6 +78,7 @@ export async function loadTableGuestContext(
           restaurantName: restaurants.name,
           venueFlow,
           guestOrderMode,
+          currency: (row as Record<string, unknown>).currency as string ?? "USD",
         };
       }
     }

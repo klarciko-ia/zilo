@@ -53,6 +53,7 @@ export default async function TableMenuPage({
             }))}
             venueFlow={ctx.venueFlow}
             guestOrderMode={ctx.guestOrderMode}
+            currency={ctx.currency}
           />
         );
       }
@@ -74,6 +75,7 @@ export default async function TableMenuPage({
       items={sampleMenuItems}
       venueFlow={ctx.venueFlow}
       guestOrderMode={ctx.guestOrderMode}
+      currency={ctx.currency}
     />
   );
 }

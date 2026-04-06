@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { decodeSelections } from "@/lib/payment-flow";
 import { usePayment } from "@/lib/payment-context";
+import { formatCurrency } from "@/lib/format-currency";
+import type { Currency } from "@/lib/types";
 
 type Props = {
   tableId: string;
@@ -10,9 +12,10 @@ type Props = {
   amount: number;
   itemsRaw: string | null;
   tipAmount?: number;
+  currency?: string;
 };
 
-export function PaymentMethodClient({ tableId, paymentType, amount, itemsRaw, tipAmount = 0 }: Props) {
+export function PaymentMethodClient({ tableId, paymentType, amount, itemsRaw, tipAmount = 0, currency = "MAD" }: Props) {
   const { getOrder } = usePayment();
   const order = getOrder(tableId);
   const itemSelections = decodeSelections(itemsRaw);
@@ -45,17 +48,17 @@ export function PaymentMethodClient({ tableId, paymentType, amount, itemsRaw, ti
       <div className="glass-card space-y-1 rounded-2xl p-5">
         <div className="flex justify-between text-sm">
           <span className="text-slate-600">Order amount</span>
-          <span className="font-medium">{effectiveAmount.toFixed(2)} MAD</span>
+          <span className="font-medium">{formatCurrency(effectiveAmount, currency as Currency)}</span>
         </div>
         {tipAmount > 0 && (
           <div className="flex justify-between text-sm">
             <span className="text-slate-600">Tip</span>
-            <span className="font-medium">{tipAmount.toFixed(2)} MAD</span>
+            <span className="font-medium">{formatCurrency(tipAmount, currency as Currency)}</span>
           </div>
         )}
         <div className="border-t border-slate-100 pt-2 flex justify-between">
           <span className="text-sm text-slate-600">Total</span>
-          <span className="text-xl font-semibold">{total.toFixed(2)} MAD</span>
+          <span className="text-xl font-semibold">{formatCurrency(total, currency as Currency)}</span>
         </div>
       </div>
 

@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import type {
+  Currency,
   GuestOrderMode,
   MenuCategory,
   MenuItem,
   VenueFlow,
 } from "@/lib/types";
+import { formatCurrency } from "@/lib/format-currency";
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
@@ -18,6 +20,7 @@ type Props = {
   items: MenuItem[];
   venueFlow: VenueFlow;
   guestOrderMode: GuestOrderMode;
+  currency?: string;
 };
 
 export function TableMenuCartClient({
@@ -28,6 +31,7 @@ export function TableMenuCartClient({
   items,
   venueFlow,
   guestOrderMode,
+  currency = "MAD",
 }: Props) {
   const { addItem, getCartLines, getSubtotal, updateQuantity } = useCart();
   const waiterMode = guestOrderMode === "waiter_service";
@@ -250,7 +254,7 @@ export function TableMenuCartClient({
                           </div>
                           <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{item.description}</p>
                           <div className="pt-2 flex items-center justify-between">
-                            <p className={`price-tag text-base font-bold ${soldOut ? "text-slate-400" : "text-brand"}`}>{item.price} <span className="text-[10px] font-medium text-slate-400">MAD</span></p>
+                            <p className={`price-tag text-base font-bold ${soldOut ? "text-slate-400" : "text-brand"}`}>{formatCurrency(item.price, currency as Currency)}</p>
 
                             {soldOut ? (
                               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-400 cursor-not-allowed">
@@ -333,7 +337,7 @@ export function TableMenuCartClient({
             </div>
 
             <div className="flex items-center gap-4">
-              <span className="price-tag text-xl font-bold text-white">{subtotal.toFixed(2)} MAD</span>
+              <span className="price-tag text-xl font-bold text-white">{formatCurrency(subtotal, currency as Currency)}</span>
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-brand transition-colors group-hover:bg-accent group-hover:text-white">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" />

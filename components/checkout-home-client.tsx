@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePayment } from "@/lib/payment-context";
-import type { GuestOrderMode } from "@/lib/types";
+import type { Currency, GuestOrderMode } from "@/lib/types";
+import { formatCurrency } from "@/lib/format-currency";
 
 const TIP_OPTIONS = [
   { label: "7%", value: 7, recommended: true },
@@ -11,9 +12,9 @@ const TIP_OPTIONS = [
   { label: "12%", value: 12, recommended: false },
 ];
 
-type Props = { tableId: string; guestOrderMode: GuestOrderMode };
+type Props = { tableId: string; guestOrderMode: GuestOrderMode; currency?: string };
 
-export function CheckoutHomeClient({ tableId, guestOrderMode }: Props) {
+export function CheckoutHomeClient({ tableId, guestOrderMode, currency = "MAD" }: Props) {
   const { ensureOrderFromCart, getOrder, refreshOrderFromServer } = usePayment();
   const waiterMode = guestOrderMode === "waiter_service";
   const order = getOrder(tableId);
@@ -99,7 +100,7 @@ export function CheckoutHomeClient({ tableId, guestOrderMode }: Props) {
         <div className="space-y-2">
           <h1 className="text-xl font-bold">Waiting for staff</h1>
           <p className="text-sm text-slate-600 max-w-xs mx-auto">
-            Your bill is covered, but <span className="font-medium">{cashPending.toFixed(2)} MAD</span> cash is still
+            Your bill is covered, but <span className="font-medium">{formatCurrency(cashPending, currency as Currency)}</span> cash is still
             pending confirmation at the till.
           </p>
         </div>
@@ -122,7 +123,7 @@ export function CheckoutHomeClient({ tableId, guestOrderMode }: Props) {
         </div>
         <div className="space-y-2">
           <h1 className="text-xl font-bold">Bill Fully Paid</h1>
-          <p className="text-sm text-slate-500">Your total of {order.totalAmount.toFixed(2)} MAD has been settled.</p>
+          <p className="text-sm text-slate-500">Your total of {formatCurrency(order.totalAmount, currency as Currency)} has been settled.</p>
         </div>
         <Link href={`/table/${tableId}/review`} className="btn-primary">
           Rate your visit
@@ -182,28 +183,28 @@ export function CheckoutHomeClient({ tableId, guestOrderMode }: Props) {
         <div className="border-t border-slate-100 pt-3 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Subtotal</span>
-            <span className="font-medium">{subtotal.toFixed(2)} MAD</span>
+            <span className="font-medium">{formatCurrency(subtotal, currency as Currency)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Tax ({taxRate}%)</span>
-            <span className="font-medium">{taxAmount.toFixed(2)} MAD</span>
+            <span className="font-medium">{formatCurrency(taxAmount, currency as Currency)}</span>
           </div>
           {order.amountPaidByCard > 0 || order.amountCashPending > 0 ? (
             <>
               <div className="flex justify-between text-sm text-green-600">
                 <span>Already paid</span>
-                <span>−{(subtotal - remaining).toFixed(2)} MAD</span>
+                <span>−{formatCurrency(subtotal - remaining, currency as Currency)}</span>
               </div>
               <div className="flex justify-between text-sm font-bold">
                 <span>Remaining</span>
-                <span>{remaining.toFixed(2)} MAD</span>
+                <span>{formatCurrency(remaining, currency as Currency)}</span>
               </div>
             </>
           ) : null}
           {order.amountCashPending > 0 && (
             <div className="flex justify-between text-sm text-accent">
               <span>Cash pending</span>
-              <span>{order.amountCashPending.toFixed(2)} MAD</span>
+              <span>{formatCurrency(order.amountCashPending, currency as Currency)}</span>
             </div>
           )}
         </div>
@@ -246,7 +247,7 @@ export function CheckoutHomeClient({ tableId, guestOrderMode }: Props) {
           <input
             type="text"
             inputMode="decimal"
-            placeholder="Enter tip amount (MAD)"
+            placeholder={`Enter tip amount (${currency})`}
             className="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm outline-none ring-brand/0 transition focus:border-accent/40 focus:ring-2 focus:ring-accent/25"
             value={customTip}
             onChange={(e) => setCustomTip(e.target.value)}
@@ -254,11 +255,11 @@ export function CheckoutHomeClient({ tableId, guestOrderMode }: Props) {
         )}
         <div className="flex justify-between text-sm">
           <span className="text-slate-500">Tip</span>
-          <span className="font-medium">{effectiveTip.toFixed(2)} MAD</span>
+          <span className="font-medium">{formatCurrency(effectiveTip, currency as Currency)}</span>
         </div>
         <div className="flex justify-between border-t border-slate-100 pt-4 text-lg font-bold tracking-tight text-brand">
           <span>Grand total</span>
-          <span className="text-accent">{grandTotal.toFixed(2)} MAD</span>
+          <span className="text-accent">{formatCurrency(grandTotal, currency as Currency)}</span>
         </div>
       </div>
 

@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePayment } from "@/lib/payment-context";
+import { formatCurrency } from "@/lib/format-currency";
+import type { Currency } from "@/lib/types";
 
 type Props = {
   tableId: string;
   tipPercent?: number;
+  currency?: string;
 };
 
 const PEOPLE_OPTIONS = [2, 3, 4, 5, 6];
 
-export function PercentagePaymentClient({ tableId, tipPercent = 0 }: Props) {
+export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "MAD" }: Props) {
   const { ensureOrderFromCart, getOrder } = usePayment();
   const order = getOrder(tableId);
   const [loading, setLoading] = useState(!order);
@@ -81,7 +84,7 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0 }: Props) {
 
       <div className="glass-card rounded-2xl p-5">
         <p className="text-sm text-slate-600">Remaining balance</p>
-        <p className="text-2xl font-bold tracking-tight text-brand">{remaining.toFixed(2)} MAD</p>
+        <p className="text-2xl font-bold tracking-tight text-brand">{formatCurrency(remaining, currency as Currency)}</p>
       </div>
 
       <div>
@@ -123,18 +126,18 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0 }: Props) {
       {isValidN && (
         <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-5">
           <div className="flex justify-between text-sm">
-            <span className="text-slate-600">Your share ({remaining.toFixed(2)} ÷ {n})</span>
-            <span className="font-bold">{share.toFixed(2)} MAD</span>
+            <span className="text-slate-600">Your share ({formatCurrency(remaining, currency as Currency)} ÷ {n})</span>
+            <span className="font-bold">{formatCurrency(share, currency as Currency)}</span>
           </div>
           {tipShare > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">Tip ({tipPercent}%)</span>
-              <span className="font-medium">{tipShare.toFixed(2)} MAD</span>
+              <span className="font-medium">{formatCurrency(tipShare, currency as Currency)}</span>
             </div>
           )}
           <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold tracking-tight text-brand">
             <span>Your total</span>
-            <span className="text-accent">{(share + tipShare).toFixed(2)} MAD</span>
+            <span className="text-accent">{formatCurrency(share + tipShare, currency as Currency)}</span>
           </div>
         </div>
       )}
@@ -144,7 +147,7 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0 }: Props) {
           href={`/table/${tableId}/checkout/method?type=split_n_partial&amount=${share.toFixed(2)}&tipPercent=${tipPercent}&tipAmount=${tipShare.toFixed(2)}`}
           className="btn-primary block rounded-2xl py-4 text-center shadow-lg shadow-brand/25"
         >
-          Pay {(share + tipShare).toFixed(2)} MAD
+          Pay {formatCurrency(share + tipShare, currency as Currency)}
         </Link>
       ) : (
         <button disabled className="block w-full rounded-2xl bg-slate-200 px-4 py-4 text-center font-bold text-slate-400">
