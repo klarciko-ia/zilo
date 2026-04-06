@@ -13,6 +13,7 @@ type Props = {
   amount: number;
   itemsRaw: string | null;
   tipAmount?: number;
+  currency?: string;
 };
 
 function toPaymentType(value: string): PaymentType {
@@ -22,7 +23,7 @@ function toPaymentType(value: string): PaymentType {
   return "full";
 }
 
-export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, tipAmount = 0 }: Props) {
+export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, tipAmount = 0, currency = "MAD" }: Props) {
   const router = useRouter();
   const { applyPayment, getOrder, ensureOrderFromCart } = usePayment();
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +54,7 @@ export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
 
   if (isFullyPaid) return null;
 
-  const onSimulateSuccess = async () => {
-    setLoading(true);
-    setError(null);
+  const simulatePayment = async () => {
     const result = await applyPayment({
       tableId,
       paymentMethod: "card",
@@ -74,6 +73,42 @@ export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
     router.push(
       `/table/${tableId}/checkout/success?method=card&amount=${effectiveAmount.toFixed(2)}&tip=${tipAmount.toFixed(2)}&paymentId=${result.paymentId}`
     );
+  };
+
+  const onPay = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/payments/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order?.orderId ?? tableId,
+          amount: effectiveAmount,
+          currency,
+          tableSlug: tableId,
+          tipAmount,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      if (data.fallback) {
+        await simulatePayment();
+        return;
+      }
+
+      setError("Unexpected response from payment service.");
+      setLoading(false);
+    } catch {
+      await simulatePayment();
+    }
   };
 
   return (
@@ -117,7 +152,7 @@ export function CardPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             type="button"
-            onClick={onSimulateSuccess}
+            onClick={onPay}
             disabled={loading}
             className="block w-full rounded-2xl bg-brand px-4 py-4 text-center font-semibold text-white shadow-lg shadow-brand/25 transition hover:shadow-lift disabled:opacity-60"
           >
