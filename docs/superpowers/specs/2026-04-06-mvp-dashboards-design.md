@@ -4,11 +4,13 @@
 
 Zilo is a SaaS ordering & payment platform for restaurants. Guests scan a link, browse the menu, order, and pay (including split payments) from their phone. The platform serves three user types: the SaaS owner (Master Admin), restaurant owners, and restaurant staff (servers).
 
-**MVP scope:** 2-3 test restaurants (friends/contacts), free for 3 months, deployed on Vercel. The goal is a polished demo for investors plus real-world testing. International from day one (Bali, Morocco, anywhere).
+**MVP scope:** 2-3 test restaurants (friends/contacts), free for 3 months, deployed on Vercel. The goal is a polished demo for investors plus real-world testing. International from day one — target markets: Bali (Indonesia), Morocco, and Canada.
 
 **Timeline:** 3-4 days.
 
 **Approach:** Clean Slate — rebuild both console frontends from scratch, keep existing backend/API layer and adapt it.
+
+**Target currencies:** IDR (Bali), MAD (Morocco), CAD (Canada), USD (fallback). Each restaurant is configured with its own currency at creation time.
 
 ---
 
@@ -286,3 +288,140 @@ Restaurant owner can create staff logins from the Restaurant Admin. Simple form:
 | Icons | lucide-react (keep) | Already installed |
 | Realtime | Supabase Realtime (keep) | Already configured for some tables |
 | Auth | localStorage sessions (keep for MVP) | Exists, works. Proper auth (cookies/JWT) is v2. |
+
+---
+
+## 8. Multi-Currency
+
+Each restaurant has a `currency` field (set at creation). All prices, totals, and payment amounts display in that currency.
+
+### Database
+
+Add `currency` column to `restaurants` table (default `USD`):
+
+```sql
+ALTER TABLE restaurants ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';
+```
+
+### Supported Currencies (MVP)
+
+| Market | Currency | Stripe supported |
+|--------|----------|-----------------|
+| Canada | CAD | Yes |
+| Indonesia (Bali) | IDR | Yes |
+| Morocco | MAD | Yes (via Stripe Atlas/foreign entity) |
+| Fallback | USD | Yes |
+
+### Display
+
+All money values (menu prices, order totals, payment amounts, KPI cards) use a `formatCurrency(amount, currency)` helper. No hardcoded `$` signs anywhere.
+
+### Stripe
+
+Stripe Checkout natively supports all these currencies. The `currency` field is passed to `stripe.checkout.sessions.create()`.
+
+---
+
+## 9. Restaurant Onboarding
+
+When the master admin creates a new restaurant client:
+
+### "Add Customer" Form Fields
+
+- Restaurant name
+- Owner name
+- Owner email (becomes their login)
+- Owner phone (optional)
+- Country (dropdown: Canada, Indonesia, Morocco, Other)
+- Currency (auto-set from country, editable)
+- Number of tables
+- Tier (1 or 2)
+
+### Post-Creation Summary Screen
+
+After clicking "Create", a summary screen shows:
+- Restaurant name
+- Login URL: `https://zilo.vercel.app/restaurant/login`
+- Email: (what was entered)
+- Default password: `restaurant123`
+- Table links: list of all table URLs (e.g., `https://zilo.vercel.app/table/casadior-1`)
+- A "Copy all info" button (copies to clipboard for WhatsApp/email)
+
+No automated email for MVP. The master admin copies the info and sends it manually.
+
+---
+
+## 10. Item Availability (86)
+
+During service, the server can mark menu items as unavailable ("86'd" in restaurant jargon).
+
+### How It Works
+
+- A "Menu" quick-access icon in the Restaurant Admin top bar (visible to both owner and staff)
+- Opens a simple list of all menu items with an on/off toggle
+- Toggling off sets `is_available = false` on the item
+- Guest-side: unavailable items appear greyed out with "Sold out" label, cannot be added to cart
+- Resets: anyone can toggle items back on at any time
+
+### Database
+
+Uses existing `menu_items.is_available` boolean column — no schema change needed.
+
+---
+
+## 11. Post-Payment Review Flow
+
+After a guest completes payment, they are prompted to review their experience. This drives Google Reviews for the restaurant (a strong selling point to restaurant owners).
+
+### Flow
+
+```
+Payment complete → Success screen →
+"How was your experience?" → 1-5 star rating →
+If 4-5 stars → "Share on Google?" → redirect to restaurant's Google Review URL
+If 1-3 stars → "Tell us what went wrong" → feedback text → saved internally (not public)
+```
+
+### Database
+
+Uses existing `reviews` table (rating, feedback_text, redirected_to_google, order_id). The restaurant's `google_review_url` field provides the redirect target.
+
+### Value
+
+- High ratings → more Google Reviews → better SEO for the restaurant → tangible value for prospects
+- Low ratings → internal feedback → restaurant improves without public damage
+- Already coded in current codebase — minimal work to keep
+
+---
+
+## 12. Prerequisites (Day 0)
+
+Before any implementation starts:
+
+1. **Supabase cloud project** — Create a new project on supabase.com. Apply `full_setup.sql`. Update `.env.local` with real credentials. Verify tables exist and queries work.
+2. **Stripe account** — Create a Stripe account (test mode). Get publishable key + secret key. Add to `.env.local`.
+3. **Vercel project** — Connect the GitHub repo to Vercel. Set environment variables. Verify deploy works.
+
+All three must be working before writing any code.
+
+---
+
+## 13. Updated Build Estimate
+
+| Component | Estimated Effort |
+|-----------|-----------------|
+| Day 0: Supabase + Stripe + Vercel setup | ~2h |
+| Master Console — Overview + Customer Detail | ~4h |
+| Master Console — Onboarding summary screen | ~1h |
+| Restaurant Admin — Tables grid + Order detail + Cash confirm | ~6h |
+| Restaurant Admin — Item availability toggle (86) | ~1h |
+| `restaurant_staff` role with restricted views | ~2h |
+| Stripe test mode (Checkout + webhook) | ~4h |
+| Multi-currency (formatCurrency helper + DB field) | ~1h |
+| Order lifecycle (pending → confirmed → paid) | ~3h |
+| Realtime notifications (Supabase Realtime) | ~2h |
+| Guest flow polish (clean UI, restaurant name, split payment UX) | ~3h |
+| Post-payment review flow (keep + polish existing) | ~1h |
+| Deploy to Vercel | ~1h |
+
+**Total: ~31 hours / 4 focused days**
