@@ -1,5 +1,6 @@
-export type OrderStatus = "pending" | "confirmed" | "awaiting_payment" | "pending_cash" | "paid";
-export type TableDisplayStatus = "free" | "ordering" | "confirmed" | "awaiting_payment";
+import type { OrderStatus, TableDisplayStatus } from "./types";
+
+export type { OrderStatus, TableDisplayStatus };
 
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ["confirmed"],
