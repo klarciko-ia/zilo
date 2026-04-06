@@ -26,7 +26,9 @@ export function getAdminSession(): AdminSession | null {
         ? "super_admin"
         : o.role === "restaurant_owner"
           ? "restaurant_owner"
-          : "restaurant_admin";
+          : o.role === "restaurant_staff"
+            ? "restaurant_staff"
+            : "restaurant_admin";
     const restaurantId =
       o.restaurantId === null || o.restaurantId === undefined
         ? null

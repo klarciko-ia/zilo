@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
           ? "super_admin"
           : admin.role === "restaurant_owner"
             ? "restaurant_owner"
-            : "restaurant_admin";
+            : admin.role === "restaurant_staff"
+              ? "restaurant_staff"
+              : "restaurant_admin";
 
       return NextResponse.json({
         admin: {
