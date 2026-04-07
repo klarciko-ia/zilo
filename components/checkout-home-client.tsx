@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePayment } from "@/lib/payment-context";
 import type { Currency, GuestOrderMode } from "@/lib/types";
 import { formatCurrency } from "@/lib/format-currency";
@@ -18,27 +18,31 @@ export function CheckoutHomeClient({ tableId, guestOrderMode, currency = "MAD" }
   const { ensureOrderFromCart, getOrder, refreshOrderFromServer } = usePayment();
   const waiterMode = guestOrderMode === "waiter_service";
   const order = getOrder(tableId);
-  const [loading, setLoading] = useState(!order);
+  const [ready, setReady] = useState(false);
   const [tipPercent, setTipPercent] = useState(7);
   const [customTip, setCustomTip] = useState("");
   const [isCustomTip, setIsCustomTip] = useState(false);
+  const triedRef = useRef(false);
 
   useEffect(() => {
-    if (waiterMode) {
-      void refreshOrderFromServer(tableId);
+    if (order) {
+      setReady(true);
+      return;
     }
-  }, [refreshOrderFromServer, tableId, waiterMode]);
+    if (triedRef.current) return;
+    triedRef.current = true;
 
-  useEffect(() => {
-    if (order) return;
-    let cancelled = false;
-    ensureOrderFromCart(tableId).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => {
-      cancelled = true;
+    const init = async () => {
+      if (waiterMode) {
+        await refreshOrderFromServer(tableId);
+      }
+      await ensureOrderFromCart(tableId);
+      setReady(true);
     };
-  }, [ensureOrderFromCart, order, tableId]);
+    void init();
+  }, [order, tableId, waiterMode, refreshOrderFromServer, ensureOrderFromCart]);
+
+  const loading = !ready;
 
   if (loading) {
     return (

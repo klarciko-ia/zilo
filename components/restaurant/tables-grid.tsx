@@ -78,6 +78,8 @@ export function TablesGrid() {
 
   useEffect(() => {
     void fetchTables();
+    const interval = setInterval(() => { void fetchTables(); }, 5000);
+    return () => clearInterval(interval);
   }, [fetchTables]);
 
   useEffect(() => {
@@ -180,12 +182,23 @@ export function TablesGrid() {
             {style.label}
           </span>
           {table.order && (
-            <div className="mt-auto pt-2 text-xs text-slate-500">
-              <span className="font-medium text-slate-700">
-                {formatCurrency(table.order.total, currency as Currency)}
-              </span>
-              {" · "}
-              {timeAgo(table.order.createdAt)}
+            <div className="mt-auto space-y-0.5 pt-2">
+              {table.order.items?.slice(0, 3).map((item, i) => (
+                <p key={i} className="truncate text-[11px] text-slate-500">
+                  {item.quantity}× {item.name}
+                </p>
+              ))}
+              {(table.order.items?.length ?? 0) > 3 && (
+                <p className="text-[11px] text-slate-400">
+                  +{table.order.items.length - 3} more
+                </p>
+              )}
+              <div className="flex items-center justify-between pt-1 text-xs text-slate-500">
+                <span className="font-medium text-slate-700">
+                  {formatCurrency(table.order.total, currency as Currency)}
+                </span>
+                <span>{timeAgo(table.order.createdAt)}</span>
+              </div>
             </div>
           )}
         </button>

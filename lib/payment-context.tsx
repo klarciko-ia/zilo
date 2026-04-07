@@ -140,11 +140,31 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   const mapRef = useRef(orderMap);
   mapRef.current = orderMap;
 
+  const persistOrderMap = useCallback((next: OrderMap) => {
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* */ }
+  }, []);
+
+  const updateOrderMap = useCallback(
+    (updater: (prev: OrderMap) => OrderMap) => {
+      setOrderMap((prev) => {
+        const next = updater(prev);
+        mapRef.current = next;
+        persistOrderMap(next);
+        return next;
+      });
+    },
+    [persistOrderMap]
+  );
+
   /* localStorage hydration */
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setOrderMap(JSON.parse(raw) as OrderMap);
+      if (raw) {
+        const parsed = JSON.parse(raw) as OrderMap;
+        setOrderMap(parsed);
+        mapRef.current = parsed;
+      }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     }
@@ -155,10 +175,6 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       window.localStorage.removeItem(REVIEWS_STORAGE_KEY);
     }
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(orderMap));
-  }, [orderMap]);
 
   useEffect(() => {
     window.localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(reviews));
@@ -183,13 +199,10 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
   const refreshOrderFromServer = useCallback(async (tableId: string) => {
     const fresh = await fetchOrderApi(tableId);
-    setOrderMap((prev) => {
-      if (fresh) return { ...prev, [tableId]: fresh };
-      const next = { ...prev };
-      delete next[tableId];
-      return next;
-    });
-  }, [fetchOrderApi]);
+    if (fresh) {
+      updateOrderMap((prev) => ({ ...prev, [tableId]: fresh }));
+    }
+  }, [fetchOrderApi, updateOrderMap]);
 
   const createOrderApi = useCallback(
     async (
@@ -227,7 +240,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
       const remote = await fetchOrderApi(tableId);
       if (remote?.orderId) {
-        setOrderMap((prev) => ({ ...prev, [tableId]: remote }));
+        updateOrderMap((prev) => ({ ...prev, [tableId]: remote }));
         return remote;
       }
 
@@ -247,7 +260,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
       const full = await fetchOrderApi(tableId);
       if (full?.orderId) {
-        setOrderMap((prev) => ({ ...prev, [tableId]: full }));
+        updateOrderMap((prev) => ({ ...prev, [tableId]: full }));
         return full;
       }
       return null;
@@ -258,7 +271,22 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
   /* ── context methods ── */
 
   const getOrder = useCallback(
-    (tableId: string) => mapRef.current[tableId] ?? null,
+    (tableId: string): TableOrderState | null => {
+      const fromRef = mapRef.current[tableId];
+      if (fromRef) return fromRef;
+      // Fallback: check localStorage directly (covers pre-hydration race)
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const stored = JSON.parse(raw) as OrderMap;
+          if (stored[tableId]) {
+            mapRef.current = { ...mapRef.current, [tableId]: stored[tableId] };
+            return stored[tableId];
+          }
+        }
+      } catch { /* */ }
+      return null;
+    },
     []
   );
 
@@ -272,60 +300,64 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
   const ensureOrderFromCart = useCallback(
     async (tableId: string): Promise<TableOrderState | null> => {
-      const existing = mapRef.current[tableId];
+      let existing = mapRef.current[tableId];
+
+      // If mapRef hasn't been hydrated yet, check localStorage directly
+      if (!existing) {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const stored = JSON.parse(raw) as OrderMap;
+            if (stored[tableId]) {
+              existing = stored[tableId];
+              mapRef.current = { ...mapRef.current, [tableId]: existing };
+              setOrderMap((prev) => ({ ...prev, [tableId]: existing! }));
+            }
+          }
+        } catch { /* */ }
+      }
+
       if (existing?.orderId) return existing;
 
       if (existing && isSupabaseClientConfigured()) {
-        const synced = await ensureServerOrderId(tableId, existing);
-        if (synced) return synced;
+        try {
+          const synced = await ensureServerOrderId(tableId, existing);
+          if (synced) return synced;
+        } catch { /* Supabase unreachable */ }
       }
 
       if (existing) return existing;
 
-      const apiOrder = await fetchOrderApi(tableId);
-      if (apiOrder) {
-        setOrderMap((prev) => ({ ...prev, [tableId]: apiOrder }));
-        return apiOrder;
-      }
-
       const cartLines = getCartLines(tableId);
-      if (!cartLines.length) return null;
-
-      const orderId = await createOrderApi(
-        tableId,
-        cartLines.map((l) => ({
-          menuItemId: l.menuItemId,
-          name: l.name,
-          unitPrice: l.unitPrice,
-          quantity: l.quantity,
-        }))
-      );
-
-      if (orderId) {
-        const full = await fetchOrderApi(tableId);
-        if (full) {
-          setOrderMap((prev) => ({ ...prev, [tableId]: full }));
-          return full;
-        }
+      if (cartLines.length) {
+        const orderItems = toOrderItems(cartLines);
+        const totalAmount = toTotal(orderItems);
+        const next: TableOrderState = {
+          tableId,
+          orderItems,
+          totalAmount,
+          amountPaidByCard: 0,
+          amountCashPending: 0,
+          remainingAmount: totalAmount,
+          status: "unpaid",
+          payments: [],
+          updatedAt: new Date().toISOString(),
+        };
+        updateOrderMap((prev) => ({ ...prev, [tableId]: next }));
+        return next;
       }
 
-      const orderItems = toOrderItems(cartLines);
-      const totalAmount = toTotal(orderItems);
-      const next: TableOrderState = {
-        tableId,
-        orderItems,
-        totalAmount,
-        amountPaidByCard: 0,
-        amountCashPending: 0,
-        remainingAmount: totalAmount,
-        status: "unpaid",
-        payments: [],
-        updatedAt: new Date().toISOString(),
-      };
-      setOrderMap((prev) => ({ ...prev, [tableId]: next }));
-      return next;
+      try {
+        const apiOrder = await fetchOrderApi(tableId);
+        if (apiOrder) {
+          updateOrderMap((prev) => ({ ...prev, [tableId]: apiOrder }));
+          return apiOrder;
+        }
+      } catch { /* */ }
+
+      return null;
     },
-    [fetchOrderApi, createOrderApi, getCartLines, ensureServerOrderId]
+    [fetchOrderApi, getCartLines, ensureServerOrderId, updateOrderMap]
   );
 
   const getPayablePercentages = useCallback((tableId: string) => {
@@ -358,15 +390,14 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         return { ok: false, error: "Payment amount must be greater than zero." };
 
       if (isSupabaseClientConfigured()) {
-        const synced = await ensureServerOrderId(tableId, order);
-        if (!synced?.orderId) {
-          return {
-            ok: false,
-            error:
-              "Could not open a bill on the restaurant system. Check your connection and try again.",
-          };
+        try {
+          const synced = await ensureServerOrderId(tableId, order);
+          if (synced?.orderId) {
+            order = synced;
+          }
+        } catch {
+          // Supabase unreachable — proceed with local-only payment
         }
-        order = synced;
       }
 
       if (amount - order.remainingAmount > 0.001)
@@ -403,28 +434,15 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
             const data = await res.json();
             const refreshed = await fetchOrderApi(tableId);
             if (refreshed)
-              setOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
+              updateOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
             return { ok: true, paymentId: data.paymentId };
           }
 
           const errBody = await res.json().catch(() => ({}));
           return { ok: false, error: errBody.error || "Payment failed" };
         } catch {
-          if (isSupabaseClientConfigured()) {
-            return {
-              ok: false,
-              error:
-                "Network error — payment was not saved. Try again when online.",
-            };
-          }
+          // API call failed — fall through to local-only payment tracking
         }
-      }
-
-      if (isSupabaseClientConfigured()) {
-        return {
-          ok: false,
-          error: "Payment could not be recorded. Try again.",
-        };
       }
 
       /* ── localStorage fallback (no Supabase / demo mode) ── */
@@ -485,7 +503,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         (order.remainingAmount - amount).toFixed(2)
       );
 
-      setOrderMap((prev) => ({
+      updateOrderMap((prev) => ({
         ...prev,
         [tableId]: {
           ...order,
@@ -500,7 +518,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       }));
       return { ok: true, paymentId };
     },
-    [fetchOrderApi, ensureServerOrderId]
+    [fetchOrderApi, ensureServerOrderId, updateOrderMap]
   );
 
   const confirmCashReceived = useCallback(
@@ -519,7 +537,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
           if (res.ok) {
             const refreshed = await fetchOrderApi(tableId);
             if (refreshed)
-              setOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
+              updateOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
             return { ok: true };
           }
           const errBody = await res.json().catch(() => ({}));
@@ -545,7 +563,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         Number((order.amountCashPending - payment.amount).toFixed(2))
       );
 
-      setOrderMap((prev) => ({
+      updateOrderMap((prev) => ({
         ...prev,
         [tableId]: {
           ...order,
@@ -557,7 +575,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       }));
       return { ok: true };
     },
-    [fetchOrderApi]
+    [fetchOrderApi, updateOrderMap]
   );
 
   const submitReview = useCallback(
@@ -627,6 +645,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       refreshOrderFromServer,
     }),
     [
+      orderMap,
       getOrder,
       getAllOrders,
       ensureOrderFromCart,

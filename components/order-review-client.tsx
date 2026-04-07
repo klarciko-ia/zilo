@@ -1,16 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart-context";
+import { usePayment } from "@/lib/payment-context";
 import { getAlsoLikeMenuItems } from "@/lib/order-review-suggestions";
-import type { MenuItem } from "@/lib/types";
+import type { GuestOrderMode, MenuItem } from "@/lib/types";
 
 type Props = {
   tableId: string;
   tableNumber: number;
   restaurantName: string;
   items: MenuItem[];
+  guestOrderMode?: GuestOrderMode;
 };
 
 export function OrderReviewClient({
@@ -18,11 +21,61 @@ export function OrderReviewClient({
   tableNumber,
   restaurantName,
   items,
+  guestOrderMode = "waiter_service",
 }: Props) {
-  const { getCartLines, getSubtotal, updateQuantity, removeItem, addItem } =
+  const router = useRouter();
+  const { getCartLines, getSubtotal, updateQuantity, removeItem, addItem, clearCart } =
     useCart();
+  const { ensureOrderFromCart } = usePayment();
   const lines = getCartLines(tableId);
   const subtotal = getSubtotal(tableId);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const isSelfService = guestOrderMode === "self_service";
+
+  const confirmOrder = async () => {
+    if (sending || !lines.length) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await ensureOrderFromCart(tableId);
+
+      if (isSelfService) {
+        // Tier 1 (self-service): pay first, kitchen after payment
+        clearCart(tableId);
+        router.push(`/table/${tableId}/checkout`);
+      } else {
+        // Tier 2 (waiter-service): send to kitchen immediately
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(tableId)}/kitchen`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: lines.map((l) => ({
+                menuItemId: l.menuItemId,
+                name: l.name,
+                unitPrice: l.unitPrice,
+                quantity: l.quantity,
+              })),
+            }),
+          }
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setSendError(data.error || "Could not send order. Try again.");
+          return;
+        }
+        clearCart(tableId);
+        router.push(`/table/${tableId}/hub`);
+      }
+    } catch {
+      setSendError("Connection error. Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   const suggestions = useMemo(
     () => getAlsoLikeMenuItems(lines, items, 4),
@@ -251,12 +304,23 @@ export function OrderReviewClient({
       ) : null}
 
       <div className="fixed bottom-6 left-0 right-0 z-50 px-6">
-        <Link
-          href={`/table/${tableId}/hub`}
-          className="mx-auto flex max-w-md items-center justify-center rounded-[2rem] bg-brand py-4 text-sm font-bold text-white shadow-[0_20px_40px_-12px_rgba(26,26,46,0.45)] ring-1 ring-white/15 transition active:scale-[0.98]"
+        {sendError && (
+          <p className="mx-auto mb-2 max-w-md rounded-xl bg-red-50 px-3 py-2 text-center text-xs text-red-700">
+            {sendError}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={confirmOrder}
+          disabled={sending || !lines.length}
+          className="mx-auto flex w-full max-w-md items-center justify-center rounded-[2rem] bg-brand py-4 text-sm font-bold text-white shadow-[0_20px_40px_-12px_rgba(26,26,46,0.45)] ring-1 ring-white/15 transition active:scale-[0.98] disabled:opacity-60"
         >
-          Confirm
-        </Link>
+          {sending
+            ? "Sending…"
+            : isSelfService
+              ? "Confirm & Pay"
+              : "Confirm & Send to Kitchen"}
+        </button>
       </div>
     </div>
   );

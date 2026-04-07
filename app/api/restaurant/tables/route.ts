@@ -5,6 +5,7 @@ import {
   getTablesByRestaurantId,
   getRestaurantById,
 } from "@/lib/demo-store";
+import { getOrdersByRestaurantId } from "@/lib/demo-order-store";
 
 export const dynamic = "force-dynamic";
 
@@ -131,13 +132,31 @@ export async function GET(req: NextRequest) {
 
   const demoTables = getTablesByRestaurantId(restaurantId);
   const demoRestaurant = getRestaurantById(restaurantId);
+  const demoOrders = getOrdersByRestaurantId(restaurantId);
 
-  const tables = demoTables.map((t) => ({
-    id: t.slug,
-    tableNumber: t.tableNumber,
-    qrSlug: t.slug,
-    order: null,
-  }));
+  const orderBySlug = new Map(demoOrders.map((o) => [o.tableSlug, o]));
+
+  const tables = demoTables.map((t) => {
+    const demoOrder = orderBySlug.get(t.slug);
+    return {
+      id: t.slug,
+      tableNumber: t.tableNumber,
+      qrSlug: t.slug,
+      order: demoOrder
+        ? {
+            id: demoOrder.id,
+            status: demoOrder.status,
+            total: demoOrder.total,
+            createdAt: demoOrder.createdAt,
+            items: demoOrder.items.map((i) => ({
+              name: i.name,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+            })),
+          }
+        : null,
+    };
+  });
 
   return NextResponse.json({
     tables,

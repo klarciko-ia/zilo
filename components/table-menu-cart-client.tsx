@@ -139,10 +139,9 @@ export function TableMenuCartClient({
 
       {waiterMode ? (
         <div className="mx-4 rounded-2xl border border-slate-200/90 bg-slate-50/90 px-4 py-3 text-center text-sm text-slate-700">
-          <p className="font-semibold text-brand">Order with your server</p>
+          <p className="font-semibold text-brand">Waiter-assisted service</p>
           <p className="mt-1 text-xs text-slate-600">
-            This menu is for browsing only. Call a server to order, then open
-            the hub to pay, split, or review.
+            Add items to your cart and confirm — your server will be notified.
           </p>
         </div>
       ) : null}
@@ -262,7 +261,7 @@ export function TableMenuCartClient({
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M18 12H6" />
                                 </svg>
                               </span>
-                            ) : waiterMode ? null : qty > 0 ? (
+                            ) : qty > 0 ? (
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
@@ -284,7 +283,7 @@ export function TableMenuCartClient({
                                   </svg>
                                 </button>
                               </div>
-                            ) : !waiterMode ? (
+                            ) : (
                               <button
                                 type="button"
                                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand text-white shadow-lg shadow-brand/20 transition-all active:scale-90 hover:bg-accent"
@@ -294,7 +293,7 @@ export function TableMenuCartClient({
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6v12m6-6H6" />
                                 </svg>
                               </button>
-                            ) : null}
+                            )}
                           </div>
                         </div>
                       </div>
@@ -306,7 +305,7 @@ export function TableMenuCartClient({
         ))}
       </section>
 
-      {mounted && waiterMode ? (
+      {mounted && waiterMode && lines.length === 0 ? (
         <div className="fixed bottom-8 left-0 right-0 z-[100] mx-auto max-w-md px-6 animate-in fade-in slide-in-from-bottom-10 duration-700">
           <Link
             href={`/table/${tableId}/hub`}
@@ -317,7 +316,7 @@ export function TableMenuCartClient({
         </div>
       ) : null}
 
-      {mounted && !waiterMode && lines.length > 0 ? (
+      {mounted && lines.length > 0 ? (
         <div className="fixed bottom-8 left-0 right-0 z-[100] mx-auto flex max-w-md flex-col gap-2 px-6 animate-in fade-in slide-in-from-bottom-10 duration-700">
           <Link
             href={`/table/${tableId}/order-review`}

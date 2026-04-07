@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useCart } from "@/lib/cart-context";
 import { usePayment } from "@/lib/payment-context";
 import type { GuestOrderMode, VenueFlow } from "@/lib/types";
@@ -21,13 +21,10 @@ export function TableHubClient({
   venueFlow,
   guestOrderMode,
 }: Props) {
-  const { getCartLines, clearCart } = useCart();
+  const { getCartLines } = useCart();
   const { refreshOrderFromServer, getOrder } = usePayment();
   const lines = getCartLines(tableId);
   const order = getOrder(tableId);
-  const [kitchenSending, setKitchenSending] = useState(false);
-  const [kitchenFlash, setKitchenFlash] = useState<string | null>(null);
-  const [kitchenCooldownUntil, setKitchenCooldownUntil] = useState(0);
   const waiterMode = guestOrderMode === "waiter_service";
 
   useEffect(() => {
@@ -42,55 +39,6 @@ export function TableHubClient({
     order != null &&
     (remaining ?? 1) <= 0.01 &&
     !awaitingCashConfirm;
-
-  const sendToKitchen = async () => {
-    if (
-      !lines.length ||
-      kitchenSending ||
-      Date.now() < kitchenCooldownUntil
-    )
-      return;
-    setKitchenSending(true);
-    setKitchenFlash(null);
-    try {
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(tableId)}/kitchen`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: lines.map((l) => ({
-              menuItemId: l.menuItemId,
-              name: l.name,
-              unitPrice: l.unitPrice,
-              quantity: l.quantity,
-            })),
-          }),
-        }
-      );
-      const data = (await res.json()) as {
-        error?: string;
-        hint?: string;
-        details?: string;
-      };
-      if (!res.ok) {
-        const parts = [data.error, data.hint, data.details].filter(Boolean);
-        setKitchenFlash(
-          parts.length ? parts.join(" ") : "Could not send to kitchen."
-        );
-        return;
-      }
-      clearCart(tableId);
-      await refreshOrderFromServer(tableId);
-      setKitchenCooldownUntil(Date.now() + 45_000);
-      setKitchenFlash("Sent to the kitchen.");
-      window.setTimeout(() => setKitchenFlash(null), 4000);
-    } catch {
-      setKitchenFlash("Check your connection and try again.");
-    } finally {
-      setKitchenSending(false);
-    }
-  };
 
   return (
     <div className="space-y-10 px-4 pb-16 pt-6">
@@ -251,67 +199,51 @@ export function TableHubClient({
           </svg>
         </Link>
 
-        {!waiterMode ? (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={sendToKitchen}
-              disabled={
-                !lines.length ||
-                kitchenSending ||
-                Date.now() < kitchenCooldownUntil
-              }
-              className="glass-card flex w-full items-center justify-between rounded-3xl border border-slate-200/90 bg-white/95 p-5 text-left shadow-soft transition hover:border-accent/40 hover:bg-coral-light/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/15 text-accent">
-                  <svg
-                    className="h-6 w-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-brand">
-                    Send to kitchen
-                  </p>
-                  <p className="text-[10px] font-medium uppercase tracking-tight text-slate-500">
-                    {lines.length
-                      ? `${lines.reduce((s, l) => s + l.quantity, 0)} items in cart`
-                      : "Add items from the menu first"}
-                  </p>
-                </div>
+        {!waiterMode && lines.length > 0 ? (
+          <Link
+            href={`/table/${tableId}/order-review`}
+            className="glass-card flex items-center justify-between rounded-3xl border border-slate-200/90 bg-white/95 p-5 shadow-soft transition hover:border-accent/40 hover:bg-coral-light/20"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/15 text-accent">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                  />
+                </svg>
               </div>
-              {kitchenSending ? (
-                <span className="text-xs font-semibold text-slate-500">
-                  Sending…
-                </span>
-              ) : Date.now() < kitchenCooldownUntil ? (
-                <span className="text-xs font-semibold text-slate-500">
-                  Wait{" "}
-                  {Math.max(
-                    1,
-                    Math.ceil((kitchenCooldownUntil - Date.now()) / 1000)
-                  )}
-                  s
-                </span>
-              ) : null}
-            </button>
-            {kitchenFlash ? (
-              <p className="text-center text-xs font-medium text-slate-600">
-                {kitchenFlash}
-              </p>
-            ) : null}
-          </div>
+              <div>
+                <p className="text-sm font-bold text-brand">
+                  Review &amp; send to kitchen
+                </p>
+                <p className="text-[10px] font-medium uppercase tracking-tight text-slate-500">
+                  {lines.reduce((s, l) => s + l.quantity, 0)} items in cart
+                </p>
+              </div>
+            </div>
+            <svg
+              className="h-5 w-5 text-slate-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </Link>
         ) : null}
       </div>
 

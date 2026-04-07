@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { PaymentSuccessClient } from "@/components/payment-success-client";
+import { loadTableGuestContext } from "@/lib/table-guest-context";
 
-export default function SuccessPage({
+export default async function SuccessPage({
   params,
   searchParams,
 }: {
@@ -11,6 +12,8 @@ export default function SuccessPage({
   const amount = Number(searchParams.amount ?? "0");
   if (!amount || amount <= 0) return notFound();
 
+  const ctx = await loadTableGuestContext(params.id);
+
   return (
     <PaymentSuccessClient
       tableId={params.id}
@@ -18,6 +21,7 @@ export default function SuccessPage({
       method={searchParams.method ?? "card"}
       paymentId={searchParams.paymentId}
       tipAmount={Number(searchParams.tip ?? "0")}
+      guestOrderMode={ctx?.guestOrderMode}
     />
   );
 }

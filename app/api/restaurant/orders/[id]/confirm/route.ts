@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { getAdminById } from "@/lib/admin-server";
 import { canTransition } from "@/lib/order-lifecycle";
+import { updateDemoOrderStatus, getOrderById as getDemoOrder } from "@/lib/demo-order-store";
 import type { OrderStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -121,6 +122,17 @@ export async function POST(
     } catch {
       /* fall through to demo */
     }
+  }
+
+  const demoOrder = getDemoOrder(orderId);
+  if (demoOrder) {
+    if (!canTransition(demoOrder.status, newStatus)) {
+      return NextResponse.json(
+        { error: `Cannot transition from ${demoOrder.status} to ${newStatus}` },
+        { status: 422 },
+      );
+    }
+    updateDemoOrderStatus(orderId, newStatus);
   }
 
   return NextResponse.json({ ok: true, orderId, newStatus });

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { usePayment } from "@/lib/payment-context";
 import { confirmedPaidTotal, formatOrderStatus } from "@/lib/order-summary";
+import type { GuestOrderMode } from "@/lib/types";
 
 const STAR_FACES = [
   { emoji: "😭", label: "Terrible", color: "from-red-500 to-red-600" },
@@ -27,6 +28,7 @@ type Props = {
   method: string;
   paymentId?: string;
   tipAmount?: number;
+  guestOrderMode?: GuestOrderMode;
   /** When set to a real place link, show “Share on Google”. Omit for MVP. */
   googleReviewUrl?: string | null;
 };
@@ -44,11 +46,31 @@ export function PaymentSuccessClient({
   method,
   paymentId,
   tipAmount = 0,
+  guestOrderMode,
   googleReviewUrl,
 }: Props) {
   const { getOrder, submitReview } = usePayment();
   const order = getOrder(tableId);
   const isCash = method === "cash";
+
+  const kitchenFired = useRef(false);
+  useEffect(() => {
+    if (guestOrderMode !== "self_service" || kitchenFired.current) return;
+    kitchenFired.current = true;
+    if (!order?.orderItems?.length) return;
+    fetch(`/api/tables/${encodeURIComponent(tableId)}/kitchen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: order.orderItems.map((i: { menuItemId: string; name: string; unitPrice: number; quantityTotal: number }) => ({
+          menuItemId: i.menuItemId,
+          name: i.name,
+          unitPrice: i.unitPrice,
+          quantity: i.quantityTotal,
+        })),
+      }),
+    }).catch(() => {});
+  }, [guestOrderMode, tableId, order]);
   const total = amount + tipAmount;
   const hasGoogle = isConfiguredGoogleReviewUrl(googleReviewUrl ?? undefined);
 

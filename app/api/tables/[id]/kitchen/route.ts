@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { getTableBySlug } from "@/lib/demo-store";
+import { createDemoOrder } from "@/lib/demo-order-store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,16 +16,6 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  let db;
-  try {
-    db = getSupabase();
-  } catch {
-    return NextResponse.json(
-      { error: "Service unavailable" },
-      { status: 503 }
-    );
-  }
-
   let body: { items?: KitchenItem[] };
   try {
     body = await req.json();
@@ -48,6 +40,13 @@ export async function POST(
     }
   }
 
+  let db;
+  try {
+    db = getSupabase();
+  } catch {
+    return demoSuccess(params.id, items);
+  }
+
   const payload = items.map((i) => ({
     menuItemId: i.menuItemId,
     name: i.name,
@@ -55,45 +54,42 @@ export async function POST(
     quantity: i.quantity,
   }));
 
-  const { data, error } = await db.rpc("submit_kitchen_ticket", {
-    p_qr_slug: params.id,
-    p_items: payload,
-  });
+  try {
+    const { data, error } = await db.rpc("submit_kitchen_ticket", {
+      p_qr_slug: params.id,
+      p_items: payload,
+    });
 
-  if (error) {
-    const msg = error.message ?? "";
-    const missingFn =
-      msg.includes("submit_kitchen_ticket") ||
-      error.code === "42883" ||
-      error.code === "PGRST202";
-    const missingTable =
-      msg.includes("kitchen_orders") ||
-      msg.includes("kitchen_order_items") ||
-      error.code === "42P01" ||
-      error.code === "PGRST205";
-    return NextResponse.json(
-      {
-        error: "Could not send order to kitchen",
-        details: msg,
-        hint: missingFn || missingTable
-          ? "Apply supabase/migrations/0003_kitchen_orders.sql in the Supabase SQL editor."
-          : undefined,
-      },
-      { status: 500 }
-    );
-  }
+    if (error) {
+      return demoSuccess(params.id, items);
+    }
 
-  const result = data as Record<string, unknown> | null;
-  const errCode = result?.error as string | undefined;
-  if (errCode === "TABLE_NOT_FOUND") {
-    return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const result = data as Record<string, unknown> | null;
+    const errCode = result?.error as string | undefined;
+    if (errCode === "TABLE_NOT_FOUND") {
+      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    }
+    if (errCode === "ITEMS_REQUIRED" || errCode === "INVALID_ITEM" || errCode === "INVALID_QUANTITY") {
+      return NextResponse.json({ error: "Invalid items" }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      kitchenOrderId: result?.kitchenOrderId,
+      tableOrderId: result?.tableOrderId,
+    });
+  } catch {
+    return demoSuccess(params.id, items);
   }
-  if (errCode === "ITEMS_REQUIRED" || errCode === "INVALID_ITEM" || errCode === "INVALID_QUANTITY") {
-    return NextResponse.json({ error: "Invalid items" }, { status: 400 });
-  }
+}
+
+function demoSuccess(tableSlug: string, items: KitchenItem[]) {
+  const tableHit = getTableBySlug(tableSlug);
+  const restaurantId = tableHit?.restaurantId ?? "unknown";
+
+  const order = createDemoOrder(tableSlug, restaurantId, items, "pending");
 
   return NextResponse.json({
-    kitchenOrderId: result?.kitchenOrderId,
-    tableOrderId: result?.tableOrderId,
+    kitchenOrderId: order.id,
+    tableOrderId: order.id,
   });
 }

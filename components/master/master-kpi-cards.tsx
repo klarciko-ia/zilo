@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useMemo } from "react";
+import Link from "next/link";
 import { Building2, TrendingUp, DollarSign, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
 
@@ -21,17 +22,22 @@ function KpiCard({
   iconBg,
   label,
   value,
+  href,
 }: {
   icon: ReactNode;
   iconBg: string;
   label: string;
   value: string;
+  href: string;
 }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-[#e3c8af]/30 p-4 md:p-5">
-      <div className="flex items-center gap-3">
+    <Link
+      href={href}
+      className="bg-white rounded-xl shadow-sm border border-[#e3c8af]/30 p-4 md:p-5 transition hover:shadow-md hover:border-[#e3c8af]/60 block"
+    >
+      <div className="flex items-center gap-4">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}
+          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${iconBg}`}
         >
           {icon}
         </div>
@@ -42,7 +48,7 @@ function KpiCard({
           <p className="mt-0.5 text-2xl font-bold text-slate-800">{value}</p>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -65,25 +71,29 @@ export function MasterKpiCards({ restaurants }: { restaurants: Restaurant[] }) {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <KpiCard
-        icon={<Building2 size={20} className="text-emerald-600" />}
+        href="/admin/master/restaurants?filter=active"
+        icon={<Building2 size={28} className="text-emerald-600" />}
         iconBg="bg-emerald-50"
         label="Restaurants actifs"
         value={String(metrics.active)}
       />
       <KpiCard
-        icon={<TrendingUp size={20} className="text-blue-600" />}
+        href="/admin/master/restaurants?filter=new"
+        icon={<TrendingUp size={28} className="text-blue-600" />}
         iconBg="bg-blue-50"
         label="Nouveaux ce mois"
         value={String(metrics.newThisMonth)}
       />
       <KpiCard
-        icon={<DollarSign size={20} className="text-[#6f3ca7]" />}
+        href="/admin/master/restaurants?filter=active"
+        icon={<DollarSign size={28} className="text-[#6f3ca7]" />}
         iconBg="bg-purple-50"
         label="MRR"
         value={formatCurrency(metrics.mrr, "USD")}
       />
       <KpiCard
-        icon={<AlertTriangle size={20} className="text-red-600" />}
+        href="/admin/master/restaurants?filter=overdue"
+        icon={<AlertTriangle size={28} className="text-red-600" />}
         iconBg="bg-red-50"
         label="Impayés"
         value={String(metrics.overdue)}
