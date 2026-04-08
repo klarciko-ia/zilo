@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeSelections } from "@/lib/payment-flow";
 import { usePayment } from "@/lib/payment-context";
-import { PaymentType } from "@/lib/types";
-import type { Currency } from "@/lib/types";
+import type { PaymentType, Currency } from "@/lib/types";
 import { formatCurrency } from "@/lib/format-currency";
 
 type Props = {
@@ -29,7 +28,7 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
   const router = useRouter();
   const { applyPayment, getOrder, ensureOrderFromCart } = usePayment();
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const submitted = useRef(false);
 
   const paymentType = toPaymentType(paymentTypeRaw);
   const itemSelections = decodeSelections(itemsRaw);
@@ -38,85 +37,68 @@ export function CashPaymentClient({ tableId, paymentTypeRaw, amount, itemsRaw, t
   const remaining = order?.remainingAmount ?? amount;
   const effectiveAmount = Math.min(amount, remaining);
   const total = effectiveAmount + tipAmount;
-  const isFullyPaid = remaining <= 0.01;
 
   useEffect(() => {
     if (!order) { ensureOrderFromCart(tableId); }
   }, [order, tableId, ensureOrderFromCart]);
 
   useEffect(() => {
-    if (isFullyPaid) { router.replace(`/table/${tableId}/checkout`); }
-  }, [isFullyPaid, router, tableId]);
+    if (submitted.current || !order) return;
+    submitted.current = true;
 
-  if (isFullyPaid) return null;
+    (async () => {
+      const result = await applyPayment({
+        tableId,
+        paymentMethod: "cash",
+        paymentType,
+        amount: effectiveAmount,
+        tipAmount,
+        itemSelections,
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Could not process cash payment.");
+        submitted.current = false;
+        return;
+      }
+      router.push(
+        `/table/${tableId}/checkout/success?method=cash&amount=${effectiveAmount.toFixed(2)}&tip=${tipAmount.toFixed(2)}&paymentId=${result.paymentId}`
+      );
+    })();
+  }, [order, tableId, applyPayment, paymentType, effectiveAmount, tipAmount, itemSelections, router]);
 
-  const onConfirmCash = async () => {
-    setLoading(true);
-    setError(null);
-    const result = await applyPayment({
-      tableId,
-      paymentMethod: "cash",
-      paymentType,
-      amount: effectiveAmount,
-      tipAmount,
-      itemSelections,
-    });
-    if (!result.ok) {
-      setError(result.error ?? "Could not save cash payment.");
-      setLoading(false);
-      return;
-    }
-    router.push(
-      `/table/${tableId}/checkout/success?method=cash&amount=${effectiveAmount.toFixed(2)}&tip=${tipAmount.toFixed(2)}&paymentId=${result.paymentId}`
+  if (error) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-6 text-center px-4">
+        <div className="h-20 w-20 rounded-full bg-red-50 flex items-center justify-center ring-1 ring-red-200">
+          <svg className="h-10 w-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-bold text-slate-900">Something went wrong</h1>
+          <p className="text-sm text-slate-600">{error}</p>
+        </div>
+        <Link href={`/table/${tableId}/checkout`} className="btn-primary">
+          Back to checkout
+        </Link>
+      </div>
     );
-  };
+  }
 
   return (
-    <div className="space-y-4">
-      <header className="flex items-center gap-4">
-        <Link href={`/table/${tableId}/checkout`} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 shadow-soft backdrop-blur-sm transition hover:shadow-lift">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-          </svg>
-        </Link>
-        <h1 className="text-xl font-semibold tracking-tight text-brand">Pay with cash</h1>
-      </header>
-
-      <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-        <p className="text-sm font-medium text-amber-950">Pay your waiter</p>
-        <p className="mt-1 text-sm text-amber-900">
-          Please give <span className="font-semibold">{formatCurrency(total, currency as Currency)}</span> in cash to your
-          server or at the counter. We will mark this payment as pending until staff confirms it.
+    <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-6 text-center px-4">
+      <div className="h-20 w-20 rounded-full bg-amber-50 flex items-center justify-center ring-1 ring-amber-200 animate-pulse">
+        <svg className="h-10 w-10 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      </div>
+      <div className="space-y-2">
+        <h1 className="text-xl font-bold text-slate-900">Notifying your waiter…</h1>
+        <p className="text-sm text-slate-600 max-w-xs mx-auto">
+          Please have <span className="font-semibold">{formatCurrency(total, currency as Currency)}</span> ready.
+          Your server will come to collect the payment.
         </p>
       </div>
-
-      <div className="glass-card space-y-1 rounded-2xl p-5">
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-600">Order amount</span>
-          <span>{formatCurrency(effectiveAmount, currency as Currency)}</span>
-        </div>
-        {tipAmount > 0 && (
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-600">Tip</span>
-            <span>{formatCurrency(tipAmount, currency as Currency)}</span>
-          </div>
-        )}
-        <div className="border-t border-slate-100 pt-2 flex justify-between">
-          <span className="text-sm text-slate-600">Total</span>
-          <span className="text-xl font-semibold">{formatCurrency(total, currency as Currency)}</span>
-        </div>
-      </div>
-
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-      <button
-        type="button"
-        onClick={onConfirmCash}
-        disabled={loading}
-        className="block w-full rounded-2xl bg-brand px-4 py-4 text-center font-semibold text-white shadow-lg shadow-brand/25 transition hover:shadow-lift disabled:opacity-60"
-      >
-        {loading ? "Saving…" : "I paid / will pay cash — mark as pending"}
-      </button>
     </div>
   );
 }

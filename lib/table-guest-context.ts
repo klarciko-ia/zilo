@@ -1,6 +1,3 @@
-import { supabase } from "@/lib/supabase";
-import { fetchGuestOrderModeSafe } from "@/lib/guest-order-mode";
-import { fetchVenueFlowSafe } from "@/lib/venue-flow";
 import { sampleRestaurant, sampleTables } from "@/lib/seed-data";
 import { getTableBySlug } from "@/lib/demo-store";
 import type { GuestOrderMode, VenueFlow } from "@/lib/types";
@@ -46,45 +43,7 @@ function resolveFromLocalData(qrSlug: string): TableGuestContext | null {
 }
 
 export async function loadTableGuestContext(
-  qrSlug: string
+  qrSlug: string,
 ): Promise<TableGuestContext | null> {
-  if (!supabase) {
-    return resolveFromLocalData(qrSlug);
-  }
-
-  try {
-    const { data: row, error } = await supabase
-      .from("restaurant_tables")
-      .select("table_number, restaurant_id, restaurants(id, name)")
-      .eq("qr_slug", qrSlug)
-      .single();
-
-    if (!error && row) {
-      const rel = row.restaurants as unknown;
-      const restaurants = (
-        Array.isArray(rel) ? rel[0] : rel
-      ) as { id: string; name: string } | null;
-      if (restaurants?.id) {
-        const restaurantId = row.restaurant_id as string;
-        const [venueFlow, guestOrderMode] = await Promise.all([
-          fetchVenueFlowSafe(supabase, restaurantId),
-          fetchGuestOrderModeSafe(supabase, restaurantId),
-        ]);
-
-        return {
-          tableId: qrSlug,
-          tableNumber: row.table_number as number,
-          restaurantId,
-          restaurantName: restaurants.name,
-          venueFlow,
-          guestOrderMode,
-          currency: (row as Record<string, unknown>).currency as string ?? "USD",
-        };
-      }
-    }
-  } catch {
-    /* Supabase unreachable */
-  }
-
   return resolveFromLocalData(qrSlug);
 }

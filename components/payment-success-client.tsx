@@ -54,6 +54,18 @@ export function PaymentSuccessClient({
   const isCash = method === "cash";
 
   const kitchenFired = useRef(false);
+  const paymentNotified = useRef(false);
+
+  useEffect(() => {
+    if (paymentNotified.current) return;
+    paymentNotified.current = true;
+    fetch(`/api/tables/${encodeURIComponent(tableId)}/payment-complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method }),
+    }).catch(() => {});
+  }, [tableId, method]);
+
   useEffect(() => {
     if (guestOrderMode !== "self_service" || kitchenFired.current) return;
     kitchenFired.current = true;
@@ -171,7 +183,7 @@ export function PaymentSuccessClient({
           </svg>
         </Link>
         <h1 className="text-xl font-semibold tracking-tight text-brand">
-          {isCash ? "Cash payment recorded" : "Payment successful"}
+          {isCash ? "Waiter notified" : "Payment successful"}
         </h1>
       </header>
 
@@ -183,16 +195,16 @@ export function PaymentSuccessClient({
           </div>
           <div className="min-w-0 flex-1 space-y-1">
             <p className="text-lg font-bold text-slate-900">
-              {isCash ? "Cash payment noted" : "You’re all set"}
+              {isCash ? "Waiter notified" : "You’re all set"}
             </p>
             <p className="text-2xl font-black tracking-tight text-slate-900">
               {total.toFixed(2)} <span className="text-base font-semibold text-slate-500">MAD</span>{" "}
-              <span className="text-sm font-normal text-slate-500">paid</span>
+              <span className="text-sm font-normal text-slate-500">{isCash ? "to collect" : "paid"}</span>
             </p>
             {isCash ? (
               <p className="text-sm text-slate-600">
-                Pending staff confirmation — please pay your waiter{" "}
-                <span className="font-semibold text-slate-800">{total.toFixed(2)} MAD</span>.
+                Your waiter has been notified. Please have{" "}
+                <span className="font-semibold text-slate-800">{total.toFixed(2)} MAD</span> ready.
               </p>
             ) : (
               <p className="text-sm text-slate-600">Your {method === "card" ? "card" : method} payment was received.</p>

@@ -1,77 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { getTableBySlug } from "@/lib/demo-store";
+import {
+  getActiveOrderByTableSlug,
+  createDemoOrder,
+  computePaymentSummary,
+} from "@/lib/demo-order-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
-  try {
-    const db = getSupabase();
+  const order = getActiveOrderByTableSlug(params.id);
 
-    const { data: table } = await db
-      .from("restaurant_tables")
-      .select("id")
-      .eq("qr_slug", params.id)
-      .single();
-
-    if (!table) {
-      return NextResponse.json({ order: null });
-    }
-
-    const { data: order } = await db
-      .from("table_orders")
-      .select("*, order_items(*), payments(*)")
-      .eq("table_id", table.id)
-      .neq("status", "paid")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!order) {
-      return NextResponse.json({ order: null });
-    }
-
-    return NextResponse.json({
-      order: {
-        id: order.id,
-        tableId: params.id,
-        status: order.status,
-        totalAmount: Number(order.total_amount),
-        amountPaid: Number(order.amount_paid),
-        amountCashPending: Number(order.amount_cash_pending),
-        remainingAmount: Number(order.remaining_amount),
-        orderItems: (order.order_items ?? []).map((oi: Record<string, unknown>) => ({
-          id: oi.id,
-          menuItemId: oi.menu_item_id,
-          name: oi.name,
-          unitPrice: Number(oi.unit_price),
-          quantityTotal: oi.quantity_total,
-          quantityPaid: oi.quantity_paid,
-          quantityRemaining: oi.quantity_remaining,
-        })),
-        payments: (order.payments ?? []).map((p: Record<string, unknown>) => ({
-          id: p.id,
-          amount: Number(p.amount),
-          paymentMethod: p.payment_method,
-          paymentType: p.payment_type,
-          status: p.status,
-          createdAt: p.created_at,
-        })),
-        updatedAt: order.updated_at,
-      },
-    });
-  } catch {
+  if (!order) {
     return NextResponse.json({ order: null });
   }
+
+  const summary = computePaymentSummary(order);
+
+  return NextResponse.json({
+    order: {
+      id: order.id,
+      tableId: params.id,
+      status: order.status,
+      totalAmount: order.total,
+      confirmedPaid: summary.totalConfirmed,
+      pendingCash: summary.pendingCash,
+      remainingToClaim: summary.remainingToClaim,
+      orderItems: order.items.map((oi) => ({
+        id: oi.menuItemId,
+        menuItemId: oi.menuItemId,
+        name: oi.name,
+        unitPrice: oi.unitPrice,
+        quantityTotal: oi.quantity,
+        quantityPaid: 0,
+        quantityRemaining: oi.quantity,
+      })),
+      payments: order.payments.map((p) => ({
+        id: p.id,
+        method: p.method,
+        amount: p.amount,
+        tipAmount: p.tipAmount,
+        status: p.status,
+        createdAt: p.createdAt,
+      })),
+      updatedAt: order.createdAt,
+    },
+  });
 }
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
-  let body: { items: Array<{ menuItemId: string; name: string; unitPrice: number; quantity: number }> };
+  let body: {
+    items: Array<{
+      menuItemId: string;
+      name: string;
+      unitPrice: number;
+      quantity: number;
+    }>;
+  };
   try {
     body = await req.json();
   } catch {
@@ -83,63 +74,14 @@ export async function POST(
     return NextResponse.json({ error: "Items required" }, { status: 400 });
   }
 
-  try {
-    const db = getSupabase();
+  const tableHit = getTableBySlug(params.id);
+  const restaurantId = tableHit?.restaurantId ?? "unknown";
 
-    const { data: table } = await db
-      .from("restaurant_tables")
-      .select("id, restaurant_id")
-      .eq("qr_slug", params.id)
-      .single();
-
-    if (!table) {
-      return demoOrderSuccess(params.id, items);
-    }
-
-    const totalAmount = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-
-    const { data: order, error: orderErr } = await db
-      .from("table_orders")
-      .insert({
-        restaurant_id: table.restaurant_id,
-        table_id: table.id,
-        status: "unpaid",
-        total_amount: totalAmount,
-        amount_paid: 0,
-        amount_cash_pending: 0,
-        remaining_amount: totalAmount,
-      })
-      .select()
-      .single();
-
-    if (orderErr || !order) {
-      return demoOrderSuccess(params.id, items);
-    }
-
-    const orderItemRows = items.map((i) => ({
-      order_id: order.id,
-      menu_item_id: i.menuItemId,
-      name: i.name,
-      unit_price: i.unitPrice,
-      quantity_total: i.quantity,
-      quantity_paid: 0,
-      quantity_remaining: i.quantity,
-      total_price: i.unitPrice * i.quantity,
-    }));
-
-    await db.from("order_items").insert(orderItemRows);
-
-    return NextResponse.json({ orderId: order.id }, { status: 201 });
-  } catch {
-    return demoOrderSuccess(params.id, items);
+  const existing = getActiveOrderByTableSlug(params.id);
+  if (existing) {
+    return NextResponse.json({ orderId: existing.id }, { status: 201 });
   }
-}
 
-function demoOrderSuccess(
-  tableSlug: string,
-  items: Array<{ unitPrice: number; quantity: number }>
-) {
-  const demoId = `demo-order-${tableSlug}-${Date.now()}`;
-  const total = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  return NextResponse.json({ orderId: demoId, total }, { status: 201 });
+  const order = createDemoOrder(params.id, restaurantId, items, "pending");
+  return NextResponse.json({ orderId: order.id, total: order.total }, { status: 201 });
 }

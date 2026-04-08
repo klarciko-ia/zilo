@@ -25,22 +25,21 @@ export function CheckoutHomeClient({ tableId, guestOrderMode, currency = "MAD" }
   const triedRef = useRef(false);
 
   useEffect(() => {
-    if (order) {
-      setReady(true);
+    if (triedRef.current) {
+      if (order) setReady(true);
       return;
     }
-    if (triedRef.current) return;
     triedRef.current = true;
 
     const init = async () => {
-      if (waiterMode) {
-        await refreshOrderFromServer(tableId);
+      await refreshOrderFromServer(tableId);
+      if (!getOrder(tableId)) {
+        await ensureOrderFromCart(tableId);
       }
-      await ensureOrderFromCart(tableId);
       setReady(true);
     };
     void init();
-  }, [order, tableId, waiterMode, refreshOrderFromServer, ensureOrderFromCart]);
+  }, [order, tableId, refreshOrderFromServer, ensureOrderFromCart, getOrder]);
 
   const loading = !ready;
 
@@ -102,10 +101,10 @@ export function CheckoutHomeClient({ tableId, guestOrderMode, currency = "MAD" }
           </svg>
         </div>
         <div className="space-y-2">
-          <h1 className="text-xl font-bold">Waiting for staff</h1>
+          <h1 className="text-xl font-bold">Waiter notified</h1>
           <p className="text-sm text-slate-600 max-w-xs mx-auto">
-            Your bill is covered, but <span className="font-medium">{formatCurrency(cashPending, currency as Currency)}</span> cash is still
-            pending confirmation at the till.
+            Your server is coming to collect <span className="font-medium">{formatCurrency(cashPending, currency as Currency)}</span> in cash.
+            Once confirmed, your order is complete.
           </p>
         </div>
         <Link href={`/table/${tableId}/hub`} className="btn-primary">

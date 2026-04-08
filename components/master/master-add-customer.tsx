@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { X, Copy, Check } from "lucide-react";
-import { getAdminSession } from "@/lib/admin-session";
+import { getMasterSession } from "@/lib/admin-session";
 
 type FormData = {
   name: string;
@@ -113,7 +113,7 @@ export function MasterAddCustomer({
       return;
     }
 
-    const session = getAdminSession();
+    const session = getMasterSession();
     if (!session?.id) {
       setError("No admin session.");
       return;

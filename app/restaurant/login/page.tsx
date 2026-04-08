@@ -1,34 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { loginAdmin } from "@/lib/admin-auth";
-import { getAdminSession, isSuperAdmin } from "@/lib/admin-session";
+import { getRestaurantSession, isSuperAdmin } from "@/lib/admin-session";
 
 export default function RestaurantLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@zilo.ma");
-  const [password, setPassword] = useState("admin123");
+  const searchParams = useSearchParams();
+  const prefillEmail = searchParams.get("email");
+  const prefillPassword = searchParams.get("password");
+
+  const [email, setEmail] = useState(prefillEmail || "admin@zilo.ma");
+  const [password, setPassword] = useState(prefillPassword || "admin123");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const autoLoginFired = useRef(false);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const doLogin = async (em: string, pw: string) => {
     setError(null);
     setLoading(true);
-    const ok = await loginAdmin(email, password);
+    const ok = await loginAdmin(em, pw);
     if (!ok) {
       setError("Invalid credentials.");
       setLoading(false);
       return;
     }
-    const session = getAdminSession();
+    const session = getRestaurantSession();
     if (isSuperAdmin(session)) {
       setError("This login is for restaurant staff. Use the Master login instead.");
       setLoading(false);
       return;
     }
     router.push("/admin/restaurant");
+  };
+
+  useEffect(() => {
+    if (prefillEmail && prefillPassword && !autoLoginFired.current) {
+      autoLoginFired.current = true;
+      doLogin(prefillEmail, prefillPassword);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillEmail, prefillPassword]);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await doLogin(email, password);
   };
 
   return (

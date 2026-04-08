@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { getCredentialByEmail } from "@/lib/demo-store";
 
 export const dynamic = "force-dynamic";
 
@@ -30,37 +30,6 @@ export async function POST(req: NextRequest) {
 
   const normalized = email.toLowerCase().trim();
 
-  try {
-    const db = getSupabase();
-    const { data: admin, error: selErr } = await db
-      .from("admin_users")
-      .select("id, email, restaurant_id, password_hash, role")
-      .eq("email", normalized)
-      .single();
-
-    if (!selErr && admin && admin.password_hash === password) {
-      const role =
-        admin.role === "super_admin"
-          ? "super_admin"
-          : admin.role === "restaurant_owner"
-            ? "restaurant_owner"
-            : admin.role === "restaurant_staff"
-              ? "restaurant_staff"
-              : "restaurant_admin";
-
-      return NextResponse.json({
-        admin: {
-          id: admin.id,
-          email: admin.email,
-          restaurantId: admin.restaurant_id,
-          role,
-        },
-      });
-    }
-  } catch {
-    /* Supabase unreachable – fall through to demo check */
-  }
-
   const demo = DEMO_LOGINS[normalized];
   if (demo && demo.password === password) {
     return NextResponse.json({
@@ -69,6 +38,18 @@ export async function POST(req: NextRequest) {
         email: normalized,
         restaurantId: demo.restaurantId,
         role: demo.role,
+      },
+    });
+  }
+
+  const dynamicCred = getCredentialByEmail(normalized);
+  if (dynamicCred && dynamicCred.password === password) {
+    return NextResponse.json({
+      admin: {
+        id: dynamicCred.adminId,
+        email: dynamicCred.email,
+        restaurantId: dynamicCred.restaurantId,
+        role: dynamicCred.role,
       },
     });
   }

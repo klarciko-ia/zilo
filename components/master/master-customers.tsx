@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
-import { getAdminSession } from "@/lib/admin-session";
+import { getMasterSession } from "@/lib/admin-session";
 import { formatCurrency } from "@/lib/format-currency";
 import type { Restaurant } from "./master-kpi-cards";
 import { MasterAddCustomer } from "./master-add-customer";
@@ -87,7 +87,7 @@ export function MasterCustomers() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialFilter);
 
   const fetchRestaurants = useCallback(() => {
-    const session = getAdminSession();
+    const session = getMasterSession();
     if (!session?.id) {
       setSessionOk(false);
       setLoading(false);

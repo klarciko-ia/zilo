@@ -15,25 +15,28 @@ type Props = {
 const PEOPLE_OPTIONS = [2, 3, 4, 5, 6];
 
 export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "MAD" }: Props) {
-  const { ensureOrderFromCart, getOrder } = usePayment();
+  const { ensureOrderFromCart, getOrder, refreshOrderFromServer } = usePayment();
   const order = getOrder(tableId);
   const [loading, setLoading] = useState(!order);
   const [selectedN, setSelectedN] = useState<number | null>(null);
-  const [customN, setCustomN] = useState("");
 
   useEffect(() => {
-    if (order) return;
+    if (order) { setLoading(false); return; }
     let cancelled = false;
-    ensureOrderFromCart(tableId).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
+    (async () => {
+      await refreshOrderFromServer(tableId);
+      if (!cancelled) {
+        await ensureOrderFromCart(tableId);
+        setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
-  }, [ensureOrderFromCart, order, tableId]);
+  }, [ensureOrderFromCart, refreshOrderFromServer, order, tableId]);
 
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-sm text-slate-500">Loading order…</p>
+        <p className="text-sm text-slate-500">Loading order...</p>
       </div>
     );
   }
@@ -43,10 +46,7 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "M
       <div className="space-y-4">
         <h1 className="text-xl font-semibold">Split by People</h1>
         <p className="text-sm text-slate-600">No order available yet.</p>
-        <Link
-          href={`/table/${tableId}/checkout`}
-          className="block rounded-xl border border-slate-300 px-4 py-3 text-center font-medium"
-        >
+        <Link href={`/table/${tableId}/checkout`} className="block rounded-xl border border-slate-300 px-4 py-3 text-center font-medium">
           Back to checkout
         </Link>
       </div>
@@ -66,7 +66,7 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "M
     );
   }
 
-  const n = selectedN ?? (customN ? parseInt(customN, 10) : 0);
+  const n = selectedN ?? 0;
   const isValidN = n >= 2;
   const share = isValidN ? Number((remaining / n).toFixed(2)) : 0;
   const tipShare = isValidN && tipPercent > 0 ? Number((share * tipPercent / 100).toFixed(2)) : 0;
@@ -93,7 +93,7 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "M
           {PEOPLE_OPTIONS.map((num) => (
             <button
               key={num}
-              onClick={() => { setSelectedN(num); setCustomN(""); }}
+              onClick={() => setSelectedN(num)}
               type="button"
               className={`rounded-2xl py-4 text-center text-lg font-bold transition-all ${
                 selectedN === num
@@ -105,28 +105,12 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "M
             </button>
           ))}
         </div>
-        <div className="mt-3">
-          <input
-            type="number"
-            inputMode="numeric"
-            placeholder="Other number…"
-            min={2}
-            className={`w-full rounded-xl border bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-accent/40 focus:ring-2 focus:ring-accent/20 ${
-              customN && !selectedN ? "border-accent ring-2 ring-accent/25" : "border-slate-200"
-            }`}
-            value={customN}
-            onChange={(e) => {
-              setCustomN(e.target.value);
-              setSelectedN(null);
-            }}
-          />
-        </div>
       </div>
 
       {isValidN && (
         <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-5">
           <div className="flex justify-between text-sm">
-            <span className="text-slate-600">Your share ({formatCurrency(remaining, currency as Currency)} ÷ {n})</span>
+            <span className="text-slate-600">Each person pays ({formatCurrency(remaining, currency as Currency)} / {n})</span>
             <span className="font-bold">{formatCurrency(share, currency as Currency)}</span>
           </div>
           {tipShare > 0 && (
@@ -136,9 +120,12 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "M
             </div>
           )}
           <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold tracking-tight text-brand">
-            <span>Your total</span>
+            <span>Your share</span>
             <span className="text-accent">{formatCurrency(share + tipShare, currency as Currency)}</span>
           </div>
+          <p className="text-[10px] text-slate-400 text-center pt-1">
+            Each of the {n} people pays exactly {formatCurrency(share, currency as Currency)}
+          </p>
         </div>
       )}
 
@@ -147,7 +134,7 @@ export function PercentagePaymentClient({ tableId, tipPercent = 0, currency = "M
           href={`/table/${tableId}/checkout/method?type=split_n_partial&amount=${share.toFixed(2)}&tipPercent=${tipPercent}&tipAmount=${tipShare.toFixed(2)}`}
           className="btn-primary block rounded-2xl py-4 text-center shadow-lg shadow-brand/25"
         >
-          Pay {formatCurrency(share + tipShare, currency as Currency)}
+          Pay my share: {formatCurrency(share + tipShare, currency as Currency)}
         </Link>
       ) : (
         <button disabled className="block w-full rounded-2xl bg-slate-200 px-4 py-4 text-center font-bold text-slate-400">

@@ -115,7 +115,7 @@ export function ItemAvailability({
       <div className="relative flex w-full flex-col rounded-t-2xl bg-white md:w-96 md:rounded-none">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-slate-800">
-            Item Availability
+            Menu Management
           </h2>
           <button
             type="button"
@@ -199,12 +199,23 @@ function AvailabilityRow({
   onToggle: () => void;
 }) {
   return (
-    <li className="flex items-center justify-between py-3">
-      <span
-        className={`text-sm font-medium ${item.isAvailable ? "text-slate-700" : "text-slate-400 line-through opacity-50"}`}
-      >
-        {item.name}
-      </span>
+    <li className="flex items-center justify-between gap-3 py-3">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        {item.imageUrl && (
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className={`truncate text-sm font-medium ${item.isAvailable ? "text-slate-700" : "text-slate-400 line-through opacity-50"}`}>
+            {item.name}
+          </p>
+          <p className="text-xs text-slate-400">
+            ${item.price?.toFixed(2) ?? "—"}
+          </p>
+        </div>
+      </div>
       <button
         type="button"
         disabled={toggling}
@@ -214,7 +225,7 @@ function AvailabilityRow({
             ? `Mark ${item.name} unavailable`
             : `Mark ${item.name} available`
         }
-        className={`relative h-7 w-12 rounded-full transition-colors ${item.isAvailable ? "bg-emerald-500" : "bg-slate-300"} ${toggling ? "opacity-50" : ""}`}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${item.isAvailable ? "bg-emerald-500" : "bg-slate-300"} ${toggling ? "opacity-50" : ""}`}
       >
         <span
           className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${item.isAvailable ? "translate-x-5" : "translate-x-0.5"}`}

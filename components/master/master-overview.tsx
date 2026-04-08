@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getAdminSession } from "@/lib/admin-session";
+import { getMasterSession } from "@/lib/admin-session";
 import { MasterKpiCards, type Restaurant } from "./master-kpi-cards";
 import { MasterActivityFeed } from "./master-activity-feed";
 
@@ -14,7 +14,7 @@ export function MasterOverview() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchRestaurants = useCallback(() => {
-    const session = getAdminSession();
+    const session = getMasterSession();
     if (!session?.id) {
       setSessionOk(false);
       setLoading(false);

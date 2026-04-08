@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
-import { getAdminById } from "@/lib/admin-server";
 import { canTransition } from "@/lib/order-lifecycle";
-import { updateDemoOrderStatus, getOrderById as getDemoOrder } from "@/lib/demo-order-store";
-import type { OrderStatus } from "@/lib/types";
+import {
+  updateDemoOrderStatus,
+  getOrderById as getDemoOrder,
+  confirmPayment,
+  computePaymentSummary,
+} from "@/lib/demo-order-store";
+import {
+  getCredentialsByRestaurantId,
+  getAllRestaurants,
+} from "@/lib/demo-store";
+import type { AdminRole, OrderStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +22,31 @@ const VALID_STATUSES: OrderStatus[] = [
   "paid",
 ];
 
-const DEMO_STAFF_ID = "55555555-5555-5555-5555-555555555551";
+function resolveDemoAdmin(adminId: string) {
+  const DEMO_ADMINS: Record<string, { id: string; email: string; restaurantId: string; role: AdminRole }> = {
+    "55555555-5555-5555-5555-555555555551": {
+      id: "55555555-5555-5555-5555-555555555551",
+      email: "admin@zilo.ma",
+      restaurantId: "11111111-1111-1111-1111-111111111111",
+      role: "restaurant_admin",
+    },
+  };
+  if (DEMO_ADMINS[adminId]) return DEMO_ADMINS[adminId];
+
+  for (const rest of getAllRestaurants()) {
+    const creds = getCredentialsByRestaurantId(rest.id);
+    const match = creds.find((c) => c.adminId === adminId);
+    if (match) {
+      return {
+        id: match.adminId,
+        email: match.email,
+        restaurantId: match.restaurantId,
+        role: match.role as AdminRole,
+      };
+    }
+  }
+  return null;
+}
 
 export async function POST(
   req: NextRequest,
@@ -23,20 +54,48 @@ export async function POST(
 ) {
   const { id: orderId } = await params;
 
-  let body: { status?: string; adminId?: string };
+  let body: { status?: string; adminId?: string; paymentId?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { status: newStatusRaw, adminId } = body;
+  const { status: newStatusRaw, adminId, paymentId } = body;
 
-  if (!adminId || !newStatusRaw) {
-    return NextResponse.json(
-      { error: "status and adminId are required" },
-      { status: 400 },
-    );
+  if (!adminId) {
+    return NextResponse.json({ error: "adminId is required" }, { status: 400 });
+  }
+
+  const admin = resolveDemoAdmin(adminId);
+  if (!admin) {
+    return NextResponse.json({ error: "Invalid admin" }, { status: 401 });
+  }
+
+  const demoOrder = getDemoOrder(orderId);
+  if (!demoOrder) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  if (paymentId) {
+    const ok = confirmPayment(orderId, paymentId);
+    if (!ok) {
+      return NextResponse.json({ error: "Could not confirm payment" }, { status: 422 });
+    }
+    const updated = getDemoOrder(orderId);
+    const summary = updated ? computePaymentSummary(updated) : null;
+    return NextResponse.json({
+      ok: true,
+      orderId,
+      newStatus: updated?.status ?? demoOrder.status,
+      confirmedPaid: summary?.totalConfirmed ?? 0,
+      pendingCash: summary?.pendingCash ?? 0,
+      remainingToClaim: summary?.remainingToClaim ?? 0,
+    });
+  }
+
+  if (!newStatusRaw) {
+    return NextResponse.json({ error: "status or paymentId is required" }, { status: 400 });
   }
 
   if (!VALID_STATUSES.includes(newStatusRaw as OrderStatus)) {
@@ -45,95 +104,13 @@ export async function POST(
 
   const newStatus = newStatusRaw as OrderStatus;
 
-  let admin;
-  let db;
-  try {
-    db = getSupabase();
-    admin = await getAdminById(db, adminId);
-  } catch {
-    admin =
-      adminId === DEMO_STAFF_ID
-        ? {
-            id: DEMO_STAFF_ID,
-            email: "admin@zilo.ma",
-            restaurantId: "11111111-1111-1111-1111-111111111111",
-            role: "restaurant_admin" as const,
-          }
-        : null;
-    db = null;
+  if (!canTransition(demoOrder.status, newStatus)) {
+    return NextResponse.json(
+      { error: `Cannot transition from ${demoOrder.status} to ${newStatus}` },
+      { status: 422 },
+    );
   }
 
-  if (!admin) {
-    return NextResponse.json({ error: "Invalid admin" }, { status: 401 });
-  }
-
-  if (db) {
-    try {
-      const { data: order, error: orderErr } = await db
-        .from("table_orders")
-        .select("id, status, table_id")
-        .eq("id", orderId)
-        .maybeSingle();
-
-      if (orderErr || !order) {
-        return NextResponse.json(
-          { error: "Order not found" },
-          { status: 404 },
-        );
-      }
-
-      const currentStatus = order.status as OrderStatus;
-
-      if (!canTransition(currentStatus, newStatus)) {
-        return NextResponse.json(
-          {
-            error: `Cannot transition from ${currentStatus} to ${newStatus}`,
-          },
-          { status: 422 },
-        );
-      }
-
-      const { data: table } = await db
-        .from("restaurant_tables")
-        .select("restaurant_id")
-        .eq("id", order.table_id as string)
-        .maybeSingle();
-
-      if (
-        admin.role !== "super_admin" &&
-        admin.restaurantId !== (table?.restaurant_id as string | null)
-      ) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-
-      const { error: updateErr } = await db
-        .from("table_orders")
-        .update({ status: newStatus })
-        .eq("id", orderId);
-
-      if (updateErr) {
-        return NextResponse.json(
-          { error: "Failed to update order" },
-          { status: 500 },
-        );
-      }
-
-      return NextResponse.json({ ok: true, orderId, newStatus });
-    } catch {
-      /* fall through to demo */
-    }
-  }
-
-  const demoOrder = getDemoOrder(orderId);
-  if (demoOrder) {
-    if (!canTransition(demoOrder.status, newStatus)) {
-      return NextResponse.json(
-        { error: `Cannot transition from ${demoOrder.status} to ${newStatus}` },
-        { status: 422 },
-      );
-    }
-    updateDemoOrderStatus(orderId, newStatus);
-  }
-
+  updateDemoOrderStatus(orderId, newStatus);
   return NextResponse.json({ ok: true, orderId, newStatus });
 }

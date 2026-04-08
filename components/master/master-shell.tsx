@@ -5,8 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { Home, LogOut, Menu, Users, X } from "lucide-react";
 import { AdminGuard } from "@/components/admin-guard";
-import { getAdminSession, isSuperAdmin } from "@/lib/admin-session";
-import { logoutAdmin } from "@/lib/admin-auth";
+import { getMasterSession, isSuperAdmin } from "@/lib/admin-session";
+import { logoutMaster } from "@/lib/admin-auth";
 
 const NAV = [
   { href: "/admin/master", label: "Overview", icon: Home },
@@ -19,9 +19,9 @@ export function MasterShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const s = getAdminSession();
+    const s = getMasterSession();
     if (!isSuperAdmin(s)) {
-      router.replace("/admin/dashboard");
+      router.replace("/master/login");
     }
   }, [router]);
 
@@ -56,7 +56,7 @@ export function MasterShell({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => {
-          logoutAdmin();
+          logoutMaster();
           router.push("/master/login");
         }}
         className="mt-4 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white"

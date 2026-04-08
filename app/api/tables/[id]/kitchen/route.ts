@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
 import { getTableBySlug } from "@/lib/demo-store";
-import { createDemoOrder } from "@/lib/demo-order-store";
+import { createDemoOrder, getActiveOrderByTableSlug } from "@/lib/demo-order-store";
 
 export const dynamic = "force-dynamic";
 
@@ -40,53 +39,24 @@ export async function POST(
     }
   }
 
-  let db;
-  try {
-    db = getSupabase();
-  } catch {
-    return demoSuccess(params.id, items);
-  }
-
-  const payload = items.map((i) => ({
-    menuItemId: i.menuItemId,
-    name: i.name,
-    unitPrice: i.unitPrice,
-    quantity: i.quantity,
-  }));
-
-  try {
-    const { data, error } = await db.rpc("submit_kitchen_ticket", {
-      p_qr_slug: params.id,
-      p_items: payload,
-    });
-
-    if (error) {
-      return demoSuccess(params.id, items);
-    }
-
-    const result = data as Record<string, unknown> | null;
-    const errCode = result?.error as string | undefined;
-    if (errCode === "TABLE_NOT_FOUND") {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
-    }
-    if (errCode === "ITEMS_REQUIRED" || errCode === "INVALID_ITEM" || errCode === "INVALID_QUANTITY") {
-      return NextResponse.json({ error: "Invalid items" }, { status: 400 });
-    }
-
-    return NextResponse.json({
-      kitchenOrderId: result?.kitchenOrderId,
-      tableOrderId: result?.tableOrderId,
-    });
-  } catch {
-    return demoSuccess(params.id, items);
-  }
+  return demoSuccess(params.id, items);
 }
 
 function demoSuccess(tableSlug: string, items: KitchenItem[]) {
   const tableHit = getTableBySlug(tableSlug);
   const restaurantId = tableHit?.restaurantId ?? "unknown";
 
-  const order = createDemoOrder(tableSlug, restaurantId, items, "pending");
+  const existing = getActiveOrderByTableSlug(tableSlug);
+  if (existing) {
+    return NextResponse.json({
+      kitchenOrderId: existing.id,
+      tableOrderId: existing.id,
+    });
+  }
+
+  const isSelfService = tableHit?.restaurant?.guestOrderMode === "self_service";
+  const initialStatus = isSelfService ? "confirmed" : "pending";
+  const order = createDemoOrder(tableSlug, restaurantId, items, initialStatus);
 
   return NextResponse.json({
     kitchenOrderId: order.id,

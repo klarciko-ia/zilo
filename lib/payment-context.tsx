@@ -52,7 +52,6 @@ type PaymentContextValue = {
     redirectedToGoogle: boolean;
   }) => Promise<ReviewResult>;
   getAllReviews: () => ReviewRecord[];
-  /** Reload open bill from API after server-side changes (e.g. send to kitchen). */
   refreshOrderFromServer: (tableId: string) => Promise<void>;
 };
 
@@ -61,13 +60,6 @@ const STORAGE_KEY = "zilo_order_map_v1";
 const REVIEWS_STORAGE_KEY = "zilo_reviews_v1";
 
 const PaymentContext = createContext<PaymentContextValue | null>(null);
-
-function isSupabaseClientConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-}
 
 /* ──────────── helpers ──────────── */
 
@@ -89,19 +81,19 @@ function toTotal(items: OrderItemState[]) {
   );
 }
 
-function computeStatus(
-  remainingAmount: number,
-  amountCashPending: number
-): TableOrderState["status"] {
-  if (remainingAmount <= 0) return "paid";
-  if (amountCashPending > 0) return "pending_cash";
-  if (remainingAmount > 0) return "partially_paid";
-  return "unpaid";
-}
-
 function apiOrderToState(raw: Record<string, unknown>): TableOrderState {
   const orderItems = raw.orderItems as Record<string, unknown>[] | undefined;
   const payments = raw.payments as Record<string, unknown>[] | undefined;
+
+  const confirmedPaid = (raw.confirmedPaid as number) ?? 0;
+  const pendingCash = (raw.pendingCash as number) ?? 0;
+  const remainingToClaim = (raw.remainingToClaim as number) ?? (raw.totalAmount as number) ?? 0;
+
+  let status: TableOrderState["status"] = "unpaid";
+  if (remainingToClaim <= 0.01 && pendingCash <= 0.01) status = "paid";
+  else if (pendingCash > 0.01) status = "pending_cash";
+  else if (confirmedPaid > 0.01) status = "partially_paid";
+
   return {
     orderId: raw.id as string,
     tableId: raw.tableId as string,
@@ -115,16 +107,16 @@ function apiOrderToState(raw: Record<string, unknown>): TableOrderState {
       quantityRemaining: oi.quantityRemaining as number,
     })),
     totalAmount: raw.totalAmount as number,
-    amountPaidByCard: (raw.amountPaid as number) ?? 0,
-    amountCashPending: (raw.amountCashPending as number) ?? 0,
-    remainingAmount: raw.remainingAmount as number,
-    status: raw.status as TableOrderState["status"],
+    amountPaidByCard: confirmedPaid,
+    amountCashPending: pendingCash,
+    remainingAmount: remainingToClaim,
+    status,
     payments: (payments ?? []).map((p) => ({
       id: p.id as string,
       amount: p.amount as number,
-      paymentMethod: p.paymentMethod as PaymentMethod,
-      paymentType: p.paymentType as PaymentType,
-      status: p.status as PaymentRecord["status"],
+      paymentMethod: (p.method ?? p.paymentMethod) as PaymentMethod,
+      paymentType: (p.paymentType as PaymentType) ?? "full",
+      status: p.status === "confirmed" ? "completed" as const : "pending_cash_confirm" as const,
       createdAt: p.createdAt as string,
     })),
     updatedAt: (raw.updatedAt as string) ?? new Date().toISOString(),
@@ -180,7 +172,7 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(REVIEWS_STORAGE_KEY, JSON.stringify(reviews));
   }, [reviews]);
 
-  /* ── API helpers (best-effort, never throw) ── */
+  /* ── API helpers ── */
 
   const fetchOrderApi = useCallback(
     async (tableId: string): Promise<TableOrderState | null> => {
@@ -230,51 +222,12 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  /** Ensures a server row exists so /api/payments and admin dashboard see the bill. */
-  const ensureServerOrderId = useCallback(
-    async (
-      tableId: string,
-      order: TableOrderState
-    ): Promise<TableOrderState | null> => {
-      if (order.orderId) return order;
-
-      const remote = await fetchOrderApi(tableId);
-      if (remote?.orderId) {
-        updateOrderMap((prev) => ({ ...prev, [tableId]: remote }));
-        return remote;
-      }
-
-      const items = order.orderItems
-        .map((oi) => ({
-          menuItemId: oi.menuItemId,
-          name: oi.name,
-          unitPrice: oi.unitPrice,
-          quantity:
-            oi.quantityRemaining > 0 ? oi.quantityRemaining : oi.quantityTotal,
-        }))
-        .filter((i) => i.quantity > 0);
-      if (!items.length) return null;
-
-      const newId = await createOrderApi(tableId, items);
-      if (!newId) return null;
-
-      const full = await fetchOrderApi(tableId);
-      if (full?.orderId) {
-        updateOrderMap((prev) => ({ ...prev, [tableId]: full }));
-        return full;
-      }
-      return null;
-    },
-    [fetchOrderApi, createOrderApi]
-  );
-
   /* ── context methods ── */
 
   const getOrder = useCallback(
     (tableId: string): TableOrderState | null => {
       const fromRef = mapRef.current[tableId];
       if (fromRef) return fromRef;
-      // Fallback: check localStorage directly (covers pre-hydration race)
       try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
         if (raw) {
@@ -300,9 +253,50 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
 
   const ensureOrderFromCart = useCallback(
     async (tableId: string): Promise<TableOrderState | null> => {
-      let existing = mapRef.current[tableId];
+      const cartLines = getCartLines(tableId);
 
-      // If mapRef hasn't been hydrated yet, check localStorage directly
+      if (cartLines.length) {
+        const items = cartLines.map((l) => ({
+          menuItemId: l.menuItemId,
+          name: l.name,
+          unitPrice: l.unitPrice,
+          quantity: l.quantity,
+        }));
+
+        const orderId = await createOrderApi(tableId, items);
+
+        if (orderId) {
+          const serverOrder = await fetchOrderApi(tableId);
+          if (serverOrder) {
+            updateOrderMap((prev) => ({ ...prev, [tableId]: serverOrder }));
+            return serverOrder;
+          }
+        }
+
+        const orderItems = toOrderItems(cartLines);
+        const totalAmount = toTotal(orderItems);
+        const fallback: TableOrderState = {
+          tableId,
+          orderItems,
+          totalAmount,
+          amountPaidByCard: 0,
+          amountCashPending: 0,
+          remainingAmount: totalAmount,
+          status: "unpaid",
+          payments: [],
+          updatedAt: new Date().toISOString(),
+        };
+        updateOrderMap((prev) => ({ ...prev, [tableId]: fallback }));
+        return fallback;
+      }
+
+      const serverOrder = await fetchOrderApi(tableId);
+      if (serverOrder) {
+        updateOrderMap((prev) => ({ ...prev, [tableId]: serverOrder }));
+        return serverOrder;
+      }
+
+      let existing = mapRef.current[tableId];
       if (!existing) {
         try {
           const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -317,47 +311,9 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
         } catch { /* */ }
       }
 
-      if (existing?.orderId) return existing;
-
-      if (existing && isSupabaseClientConfigured()) {
-        try {
-          const synced = await ensureServerOrderId(tableId, existing);
-          if (synced) return synced;
-        } catch { /* Supabase unreachable */ }
-      }
-
-      if (existing) return existing;
-
-      const cartLines = getCartLines(tableId);
-      if (cartLines.length) {
-        const orderItems = toOrderItems(cartLines);
-        const totalAmount = toTotal(orderItems);
-        const next: TableOrderState = {
-          tableId,
-          orderItems,
-          totalAmount,
-          amountPaidByCard: 0,
-          amountCashPending: 0,
-          remainingAmount: totalAmount,
-          status: "unpaid",
-          payments: [],
-          updatedAt: new Date().toISOString(),
-        };
-        updateOrderMap((prev) => ({ ...prev, [tableId]: next }));
-        return next;
-      }
-
-      try {
-        const apiOrder = await fetchOrderApi(tableId);
-        if (apiOrder) {
-          updateOrderMap((prev) => ({ ...prev, [tableId]: apiOrder }));
-          return apiOrder;
-        }
-      } catch { /* */ }
-
-      return null;
+      return existing ?? null;
     },
-    [fetchOrderApi, getCartLines, ensureServerOrderId, updateOrderMap]
+    [fetchOrderApi, createOrderApi, getCartLines, updateOrderMap]
   );
 
   const getPayablePercentages = useCallback((tableId: string) => {
@@ -381,7 +337,6 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       paymentType,
       amount,
       tipAmount = 0,
-      itemSelections,
     }: ApplyPaymentInput): Promise<MutationResult> => {
       let order = mapRef.current[tableId];
       if (!order)
@@ -389,136 +344,46 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       if (amount <= 0)
         return { ok: false, error: "Payment amount must be greater than zero." };
 
-      if (isSupabaseClientConfigured()) {
-        try {
-          const synced = await ensureServerOrderId(tableId, order);
-          if (synced?.orderId) {
-            order = synced;
-          }
-        } catch {
-          // Supabase unreachable — proceed with local-only payment
+      if (!order.orderId) {
+        const serverOrder = await fetchOrderApi(tableId);
+        if (serverOrder?.orderId) {
+          order = serverOrder;
+          updateOrderMap((prev) => ({ ...prev, [tableId]: serverOrder }));
         }
       }
 
-      if (amount - order.remainingAmount > 0.001)
-        return { ok: false, error: "Cannot pay more than remaining balance." };
-
-      /* ── API (required when Supabase is configured) ── */
-      if (order.orderId) {
-        try {
-          const apiItems = itemSelections
-            ?.map((sel) => {
-              const oi = order.orderItems.find(
-                (i) => i.menuItemId === sel.menuItemId
-              );
-              return oi?.id
-                ? { orderItemId: oi.id, quantity: sel.quantity }
-                : null;
-            })
-            .filter(Boolean);
-
-          const res = await fetch("/api/payments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              orderId: order.orderId,
-              paymentType,
-              paymentMethod,
-              amount,
-              tipAmount: tipAmount || undefined,
-              itemSelections: apiItems?.length ? apiItems : undefined,
-            }),
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            const refreshed = await fetchOrderApi(tableId);
-            if (refreshed)
-              updateOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
-            return { ok: true, paymentId: data.paymentId };
-          }
-
-          const errBody = await res.json().catch(() => ({}));
-          return { ok: false, error: errBody.error || "Payment failed" };
-        } catch {
-          // API call failed — fall through to local-only payment tracking
-        }
+      if (!order.orderId) {
+        return { ok: false, error: "No server order found. Please confirm your order first." };
       }
 
-      /* ── localStorage fallback (no Supabase / demo mode) ── */
-      let nextOrderItems = order.orderItems;
-      if (paymentType === "item_partial") {
-        if (!itemSelections?.length)
-          return { ok: false, error: "Select at least one item." };
-
-        const selMap = new Map(
-          itemSelections.map((s) => [s.menuItemId, s.quantity])
-        );
-        for (const item of order.orderItems) {
-          const req = selMap.get(item.menuItemId) ?? 0;
-          if (req < 0 || req > item.quantityRemaining)
-            return {
-              ok: false,
-              error: `Invalid quantity for ${item.name}.`,
-            };
-        }
-        nextOrderItems = order.orderItems.map((item) => {
-          const qty = selMap.get(item.menuItemId) ?? 0;
-          return {
-            ...item,
-            quantityPaid: item.quantityPaid + qty,
-            quantityRemaining: item.quantityRemaining - qty,
-          };
+      try {
+        const res = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: order.orderId,
+            paymentType,
+            paymentMethod,
+            amount,
+            tipAmount: tipAmount || undefined,
+          }),
         });
 
-        const selectedAmt = itemSelections.reduce((s, sel) => {
-          const it = order.orderItems.find(
-            (i) => i.menuItemId === sel.menuItemId
-          );
-          return s + (it ? it.unitPrice * sel.quantity : 0);
-        }, 0);
-        if (Math.abs(selectedAmt - amount) > 0.001)
-          return {
-            ok: false,
-            error: "Selected items total does not match payment amount.",
-          };
+        if (res.ok) {
+          const data = await res.json();
+          const refreshed = await fetchOrderApi(tableId);
+          if (refreshed)
+            updateOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
+          return { ok: true, paymentId: data.paymentId };
+        }
+
+        const errBody = await res.json().catch(() => ({}));
+        return { ok: false, error: errBody.error || "Payment failed" };
+      } catch {
+        return { ok: false, error: "Network error. Check connection." };
       }
-
-      const paymentId = `pay_${crypto.randomUUID()}`;
-      const payment: PaymentRecord = {
-        id: paymentId,
-        amount,
-        tipAmount: tipAmount || undefined,
-        paymentMethod,
-        paymentType,
-        status: paymentMethod === "cash" ? "pending_cash_confirm" : "completed",
-        createdAt: new Date().toISOString(),
-      };
-
-      const nextPaidByCard =
-        order.amountPaidByCard + (paymentMethod === "card" ? amount : 0);
-      const nextCashPending =
-        order.amountCashPending + (paymentMethod === "cash" ? amount : 0);
-      const nextRemaining = Number(
-        (order.remainingAmount - amount).toFixed(2)
-      );
-
-      updateOrderMap((prev) => ({
-        ...prev,
-        [tableId]: {
-          ...order,
-          orderItems: nextOrderItems,
-          amountPaidByCard: Number(nextPaidByCard.toFixed(2)),
-          amountCashPending: Number(nextCashPending.toFixed(2)),
-          remainingAmount: nextRemaining,
-          status: computeStatus(nextRemaining, nextCashPending),
-          payments: [payment, ...order.payments],
-          updatedAt: new Date().toISOString(),
-        },
-      }));
-      return { ok: true, paymentId };
     },
-    [fetchOrderApi, ensureServerOrderId, updateOrderMap]
+    [fetchOrderApi, updateOrderMap]
   );
 
   const confirmCashReceived = useCallback(
@@ -527,53 +392,25 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
       paymentId: string
     ): Promise<{ ok: boolean; error?: string }> => {
       const order = mapRef.current[tableId];
-      if (!order) return { ok: false, error: "Order not found." };
+      if (!order?.orderId) return { ok: false, error: "Order not found." };
 
-      if (order.orderId) {
-        try {
-          const res = await fetch(`/api/payments/${paymentId}/confirm`, {
-            method: "POST",
-          });
-          if (res.ok) {
-            const refreshed = await fetchOrderApi(tableId);
-            if (refreshed)
-              updateOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
-            return { ok: true };
-          }
-          const errBody = await res.json().catch(() => ({}));
-          return { ok: false, error: errBody.error || "Confirmation failed" };
-        } catch {
-          /* fall through */
+      try {
+        const res = await fetch(`/api/payments/${paymentId}/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: order.orderId }),
+        });
+        if (res.ok) {
+          const refreshed = await fetchOrderApi(tableId);
+          if (refreshed)
+            updateOrderMap((prev) => ({ ...prev, [tableId]: refreshed }));
+          return { ok: true };
         }
+        const errBody = await res.json().catch(() => ({}));
+        return { ok: false, error: errBody.error || "Confirmation failed" };
+      } catch {
+        return { ok: false, error: "Network error." };
       }
-
-      const payment = order.payments.find((p) => p.id === paymentId);
-      if (!payment) return { ok: false, error: "Payment not found." };
-      if (
-        payment.paymentMethod !== "cash" ||
-        payment.status !== "pending_cash_confirm"
-      )
-        return { ok: false, error: "Payment is not pending cash confirmation." };
-
-      const nextPayments = order.payments.map((p) =>
-        p.id === paymentId ? { ...p, status: "completed" as const } : p
-      );
-      const nextCash = Math.max(
-        0,
-        Number((order.amountCashPending - payment.amount).toFixed(2))
-      );
-
-      updateOrderMap((prev) => ({
-        ...prev,
-        [tableId]: {
-          ...order,
-          payments: nextPayments,
-          amountCashPending: nextCash,
-          status: computeStatus(order.remainingAmount, nextCash),
-          updatedAt: new Date().toISOString(),
-        },
-      }));
-      return { ok: true };
     },
     [fetchOrderApi, updateOrderMap]
   );

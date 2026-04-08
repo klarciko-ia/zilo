@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
-import { getAdminById } from "@/lib/admin-server";
 import {
   getTablesByRestaurantId,
   getRestaurantById,
+  getCredentialsByRestaurantId,
+  getAllRestaurants,
 } from "@/lib/demo-store";
-import { getOrdersByRestaurantId } from "@/lib/demo-order-store";
+import {
+  getOrdersByRestaurantId,
+  getOpenWaiterCalls,
+  getRestaurantStats,
+  getAllOrdersByRestaurantId,
+  computePaymentSummary,
+} from "@/lib/demo-order-store";
 
 export const dynamic = "force-dynamic";
 
-const DEMO_STAFF_ID = "55555555-5555-5555-5555-555555555551";
+const DEMO_OWNER_ID = "55555555-5555-5555-5555-555555555550";
+
+function resolveDemoAdmin(adminId: string) {
+  if (adminId === DEMO_OWNER_ID) {
+    return { id: DEMO_OWNER_ID, email: "owner@zilo.ma", restaurantId: null as string | null, role: "super_admin" as const };
+  }
+  for (const r of getAllRestaurants()) {
+    const creds = getCredentialsByRestaurantId(r.id);
+    const match = creds.find((c) => c.adminId === adminId);
+    if (match) {
+      return {
+        id: match.adminId,
+        email: match.email,
+        restaurantId: match.restaurantId as string | null,
+        role: match.role as "restaurant_admin" | "restaurant_staff",
+      };
+    }
+  }
+  return null;
+}
 
 export async function GET(req: NextRequest) {
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
@@ -22,112 +47,14 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  let admin;
-  let db;
-  try {
-    db = getSupabase();
-    admin = await getAdminById(db, adminId);
-  } catch {
-    admin =
-      adminId === DEMO_STAFF_ID
-        ? {
-            id: DEMO_STAFF_ID,
-            email: "admin@zilo.ma",
-            restaurantId: "11111111-1111-1111-1111-111111111111",
-            role: "restaurant_admin" as const,
-          }
-        : null;
-    db = null;
-  }
+  const admin = resolveDemoAdmin(adminId);
 
   if (!admin) {
     return NextResponse.json({ error: "Invalid admin" }, { status: 401 });
   }
 
-  if (
-    admin.role !== "super_admin" &&
-    admin.restaurantId !== restaurantId
-  ) {
+  if (admin.role !== "super_admin" && admin.restaurantId !== restaurantId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  if (db) {
-    try {
-      const { data: tables, error: tablesErr } = await db
-        .from("restaurant_tables")
-        .select("id, table_number, qr_slug")
-        .eq("restaurant_id", restaurantId)
-        .order("table_number");
-
-      if (!tablesErr && tables && tables.length > 0) {
-        const tableIds = tables.map((t) => t.id as string);
-
-        const { data: orders } = await db
-          .from("table_orders")
-          .select("id, table_id, status, total_amount, created_at")
-          .in("table_id", tableIds)
-          .neq("status", "paid");
-
-        const orderMap = new Map<string, typeof orders extends (infer U)[] | null ? U : never>();
-        for (const o of orders ?? []) {
-          orderMap.set(o.table_id as string, o);
-        }
-
-        const orderIds = (orders ?? []).map((o) => o.id as string);
-        const itemMap = new Map<string, { name: string; quantity: number; unitPrice: number }[]>();
-
-        if (orderIds.length > 0) {
-          const { data: items } = await db
-            .from("order_items")
-            .select("order_id, name, quantity, unit_price")
-            .in("order_id", orderIds);
-
-          for (const item of items ?? []) {
-            const oid = item.order_id as string;
-            if (!itemMap.has(oid)) itemMap.set(oid, []);
-            itemMap.get(oid)!.push({
-              name: item.name as string,
-              quantity: item.quantity as number,
-              unitPrice: item.unit_price as number,
-            });
-          }
-        }
-
-        const { data: rest } = await db
-          .from("restaurants")
-          .select("name, currency")
-          .eq("id", restaurantId)
-          .maybeSingle();
-
-        const result = tables.map((t) => {
-          const order = orderMap.get(t.id as string);
-          return {
-            id: t.id as string,
-            tableNumber: t.table_number as number,
-            qrSlug: t.qr_slug as string,
-            order: order
-              ? {
-                  id: order.id as string,
-                  status: order.status as string,
-                  total: (order.total_amount as number) ?? 0,
-                  createdAt: order.created_at as string,
-                  items: itemMap.get(order.id as string) ?? [],
-                }
-              : null,
-          };
-        });
-
-        return NextResponse.json({
-          tables: result,
-          restaurant: {
-            name: (rest?.name as string) ?? "Restaurant",
-            currency: (rest?.currency as string) ?? "USD",
-          },
-        });
-      }
-    } catch {
-      /* fall through to demo */
-    }
   }
 
   const demoTables = getTablesByRestaurantId(restaurantId);
@@ -138,31 +65,68 @@ export async function GET(req: NextRequest) {
 
   const tables = demoTables.map((t) => {
     const demoOrder = orderBySlug.get(t.slug);
+    if (!demoOrder) {
+      return { id: t.slug, tableNumber: t.tableNumber, qrSlug: t.slug, order: null };
+    }
+
+    const summary = computePaymentSummary(demoOrder);
+
     return {
       id: t.slug,
       tableNumber: t.tableNumber,
       qrSlug: t.slug,
-      order: demoOrder
-        ? {
-            id: demoOrder.id,
-            status: demoOrder.status,
-            total: demoOrder.total,
-            createdAt: demoOrder.createdAt,
-            items: demoOrder.items.map((i) => ({
-              name: i.name,
-              quantity: i.quantity,
-              unitPrice: i.unitPrice,
-            })),
-          }
-        : null,
+      order: {
+        id: demoOrder.id,
+        status: demoOrder.status,
+        total: demoOrder.total,
+        createdAt: demoOrder.createdAt,
+        items: demoOrder.items.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+        })),
+        payments: demoOrder.payments.map((p) => ({
+          id: p.id,
+          method: p.method,
+          amount: p.amount,
+          status: p.status,
+          createdAt: p.createdAt,
+        })),
+        confirmedPaid: summary.totalConfirmed,
+        pendingCash: summary.pendingCash,
+        remainingToClaim: summary.remainingToClaim,
+      },
     };
   });
+
+  const waiterCalls = getOpenWaiterCalls(restaurantId);
+  const stats = getRestaurantStats(restaurantId);
+  const allOrders = getAllOrdersByRestaurantId(restaurantId);
 
   return NextResponse.json({
     tables,
     restaurant: {
       name: demoRestaurant?.name ?? "Restaurant",
       currency: demoRestaurant?.currency ?? "USD",
+      guestOrderMode: demoRestaurant?.guestOrderMode ?? "waiter_service",
     },
+    waiterCalls: waiterCalls.map((c) => ({
+      id: c.id,
+      tableSlug: c.tableSlug,
+      note: c.note,
+      createdAt: c.createdAt,
+    })),
+    stats,
+    orderHistory: allOrders
+      .filter((o) => o.status === "paid")
+      .slice(-50)
+      .reverse()
+      .map((o) => ({
+        id: o.id,
+        tableSlug: o.tableSlug,
+        total: o.total,
+        itemCount: o.items.length,
+        createdAt: o.createdAt,
+      })),
   });
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AdminRole } from "@/lib/types";
+import { getCredentialsByRestaurantId, getAllRestaurants } from "@/lib/demo-store";
 
 export type AdminRow = {
   id: string;
@@ -26,6 +27,26 @@ const DEMO_ADMINS: Record<string, AdminRow> = {
     role: "restaurant_admin",
   },
 };
+
+/** Resolve admin from in-memory demo credentials (no Supabase). */
+export function resolveAdminDemoOnly(adminId: string): AdminRow | null {
+  if (DEMO_ADMINS[adminId]) return DEMO_ADMINS[adminId];
+
+  for (const rest of getAllRestaurants()) {
+    const creds = getCredentialsByRestaurantId(rest.id);
+    const match = creds.find((c) => c.adminId === adminId);
+    if (match) {
+      return {
+        id: match.adminId,
+        email: match.email,
+        restaurantId: match.restaurantId,
+        role: match.role,
+      };
+    }
+  }
+
+  return null;
+}
 
 export async function getAdminById(
   db: SupabaseClient,
@@ -54,5 +75,5 @@ export async function getAdminById(
     };
   }
 
-  return DEMO_ADMINS[adminId] ?? null;
+  return resolveAdminDemoOnly(adminId);
 }

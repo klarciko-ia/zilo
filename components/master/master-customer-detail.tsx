@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   ArrowLeft,
   ExternalLink,
@@ -13,12 +13,28 @@ import {
   DollarSign,
   Clock,
   ChevronDown,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  KeyRound,
+  LogIn,
+  Users,
+  Utensils,
 } from "lucide-react";
-import { getAdminSession } from "@/lib/admin-session";
+import { getMasterSession } from "@/lib/admin-session";
 import { formatCurrency } from "@/lib/format-currency";
 import type { Currency } from "@/lib/types";
 
 type TableInfo = { slug: string; tableNumber: number };
+
+type CredentialInfo = {
+  adminId: string;
+  email: string;
+  password: string;
+  role: string;
+  label: string;
+};
 
 type RestaurantInfo = {
   id: string;
@@ -44,6 +60,7 @@ type Payload = {
   billing: { cashPending: number; paymentStatus: string };
   operations: { openWaiterCalls: number; kitchenTicketsOpen: number };
   tables: TableInfo[];
+  credentials: CredentialInfo[];
 };
 
 const PLAN_LABELS: Record<string, string> = {
@@ -100,8 +117,13 @@ export function MasterCustomerDetail({ id }: { id: string }) {
   const [selectedTable, setSelectedTable] = useState("");
   const [tierChanging, setTierChanging] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
-  const adminId = typeof window !== "undefined" ? getAdminSession()?.id : null;
+  const adminId = typeof window !== "undefined" ? getMasterSession()?.id : null;
 
   useEffect(() => {
     if (!adminId) return;
@@ -174,6 +196,52 @@ export function MasterCustomerDetail({ id }: { id: string }) {
     }
   }
 
+  const handleCopy = useCallback(async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch { /* clipboard API not available */ }
+  }, []);
+
+  async function handleResetPassword(credAdminId: string) {
+    if (!adminId || !newPassword.trim()) return;
+    setResetting(true);
+    try {
+      const res = await fetch(
+        `/api/master/restaurants/${id}/reset-password?adminId=${encodeURIComponent(adminId)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credentialAdminId: credAdminId, newPassword: newPassword.trim() }),
+        }
+      );
+      if (res.ok) {
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            credentials: prev.credentials.map((c) =>
+              c.adminId === credAdminId ? { ...c, password: newPassword.trim() } : c
+            ),
+          };
+        });
+        setResetTarget(null);
+        setNewPassword("");
+      }
+    } catch { /* ignore */ }
+    finally { setResetting(false); }
+  }
+
+  function buildQuickLoginUrl(cred: CredentialInfo, view: "owner" | "guest") {
+    if (typeof window === "undefined") return "#";
+    const origin = window.location.origin;
+    if (view === "guest" && selectedTable) {
+      return `${origin}/table/${selectedTable}/menu`;
+    }
+    return `${origin}/restaurant/login?email=${encodeURIComponent(cred.email)}&password=${encodeURIComponent(cred.password)}`;
+  }
+
   if (error) {
     return (
       <div className="space-y-4">
@@ -209,6 +277,7 @@ export function MasterCustomerDetail({ id }: { id: string }) {
   }
 
   const r = data.restaurant;
+  const credentials = data.credentials ?? [];
 
   return (
     <div className="space-y-6">
@@ -281,6 +350,247 @@ export function MasterCustomerDetail({ id }: { id: string }) {
           <InfoRow icon={<LayoutGrid size={15} />} label="Tables">
             {data.tables.length}
           </InfoRow>
+        </div>
+      </section>
+
+      {/* Access & Credentials */}
+      <section className="rounded-xl border border-[#e3c8af]/30 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Access & Credentials
+        </h2>
+
+        {credentials.length === 0 ? (
+          <p className="text-sm text-slate-400">No credentials configured yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {credentials.map((cred) => {
+              const isPasswordVisible = showPasswords[cred.adminId] ?? false;
+              return (
+                <div
+                  key={cred.adminId}
+                  className="rounded-lg border border-slate-100 bg-slate-50/50 p-4"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#062946]/10 px-2.5 py-0.5 text-xs font-medium text-[#062946]">
+                        {cred.role === "restaurant_staff" ? (
+                          <Users size={12} />
+                        ) : (
+                          <Utensils size={12} />
+                        )}
+                        {cred.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Email row */}
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="w-20 shrink-0 text-xs font-medium text-slate-500">Email</span>
+                    <code className="flex-1 rounded bg-white px-2 py-1 text-sm text-slate-800 ring-1 ring-slate-200">
+                      {cred.email}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(cred.email, `email-${cred.adminId}`)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      title="Copy email"
+                    >
+                      {copiedField === `email-${cred.adminId}` ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    </button>
+                  </div>
+
+                  {/* Password row */}
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="w-20 shrink-0 text-xs font-medium text-slate-500">Password</span>
+                    <code className="flex-1 rounded bg-white px-2 py-1 text-sm text-slate-800 ring-1 ring-slate-200">
+                      {isPasswordVisible ? cred.password : "••••••••••"}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowPasswords((prev) => ({
+                          ...prev,
+                          [cred.adminId]: !prev[cred.adminId],
+                        }))
+                      }
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      title={isPasswordVisible ? "Hide" : "Show"}
+                    >
+                      {isPasswordVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(cred.password, `pass-${cred.adminId}`)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      title="Copy password"
+                    >
+                      {copiedField === `pass-${cred.adminId}` ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    </button>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={buildQuickLoginUrl(cred, "owner")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#062946] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#0a3a5e]"
+                    >
+                      <LogIn size={13} />
+                      Open {cred.label} View
+                    </a>
+                    <a
+                      href={buildQuickLoginUrl(cred, "guest")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <ExternalLink size={13} />
+                      Guest Menu
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetTarget(resetTarget === cred.adminId ? null : cred.adminId);
+                        setNewPassword("");
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <KeyRound size={13} />
+                      Reset Password
+                    </button>
+                  </div>
+
+                  {/* Reset password form */}
+                  {resetTarget === cred.adminId && (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <input
+                        type="text"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="New password"
+                        className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#6f3ca7]/30"
+                      />
+                      <button
+                        type="button"
+                        disabled={resetting || !newPassword.trim()}
+                        onClick={() => handleResetPassword(cred.adminId)}
+                        className="rounded-md bg-[#062946] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#0a3a5e] disabled:opacity-50"
+                      >
+                        {resetting ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setResetTarget(null); setNewPassword(""); }}
+                        className="text-xs text-slate-500 hover:text-slate-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Quick Views */}
+      <section className="rounded-xl border border-[#e3c8af]/30 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Quick Views
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {credentials.map((cred) => (
+            <a
+              key={`view-${cred.adminId}`}
+              href={buildQuickLoginUrl(cred, "owner")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-4 transition hover:border-[#062946]/20 hover:shadow-md"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#062946]/10">
+                {cred.role === "restaurant_staff" ? (
+                  <Users size={18} className="text-[#062946]" />
+                ) : (
+                  <Utensils size={18} className="text-[#062946]" />
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{cred.label} View</p>
+                <p className="text-xs text-slate-500">Auto-login as {cred.email}</p>
+              </div>
+              <ExternalLink size={14} className="ml-auto text-slate-300" />
+            </a>
+          ))}
+          <a
+            href={selectedTable ? `/table/${selectedTable}/menu` : "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-4 transition hover:border-[#062946]/20 hover:shadow-md"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50">
+              <ShoppingCart size={18} className="text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Guest View</p>
+              <p className="text-xs text-slate-500">
+                Table {data.tables.find((t) => t.slug === selectedTable)?.tableNumber ?? 1} menu
+              </p>
+            </div>
+            <ExternalLink size={14} className="ml-auto text-slate-300" />
+          </a>
+        </div>
+      </section>
+
+      {/* Table Links */}
+      <section className="rounded-xl border border-[#e3c8af]/30 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Table Links
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              const origin = typeof window !== "undefined" ? window.location.origin : "";
+              const text = data.tables
+                .map((t) => `Table ${t.tableNumber}: ${origin}/table/${t.slug}/menu`)
+                .join("\n");
+              handleCopy(text, "all-tables");
+            }}
+            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+          >
+            {copiedField === "all-tables" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+            Copy all
+          </button>
+        </div>
+        <div className="max-h-48 space-y-1 overflow-y-auto">
+          {data.tables.map((t) => {
+            const url = `${typeof window !== "undefined" ? window.location.origin : ""}/table/${t.slug}/menu`;
+            return (
+              <div key={t.slug} className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                <span className="font-medium text-slate-700">Table {t.tableNumber}</span>
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#6f3ca7] hover:underline"
+                  >
+                    {t.slug}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(url, `table-${t.slug}`)}
+                    className="text-slate-400 hover:text-slate-600"
+                    title="Copy link"
+                  >
+                    {copiedField === `table-${t.slug}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 

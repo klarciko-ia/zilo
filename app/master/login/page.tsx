@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginAdmin } from "@/lib/admin-auth";
-import { getAdminSession, isSuperAdmin } from "@/lib/admin-session";
+import { getMasterSession, isSuperAdmin } from "@/lib/admin-session";
 
 export default function MasterLoginPage() {
   const router = useRouter();
@@ -22,7 +22,7 @@ export default function MasterLoginPage() {
       setLoading(false);
       return;
     }
-    const session = getAdminSession();
+    const session = getMasterSession();
     if (!isSuperAdmin(session)) {
       setError("This login is for the Master Admin only.");
       setLoading(false);

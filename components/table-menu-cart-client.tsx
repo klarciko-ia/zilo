@@ -246,8 +246,8 @@ export function TableMenuCartClient({
                           <div className="flex items-center gap-2">
                             <p className={`text-lg font-bold leading-tight tracking-tight ${soldOut ? "text-slate-400 line-through" : "text-brand"}`}>{item.name}</p>
                             {soldOut && (
-                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-600">
-                                86&apos;d
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600">
+                                Sold out
                               </span>
                             )}
                           </div>

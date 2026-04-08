@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
-import { getAdminById } from "@/lib/admin-server";
+import {
+  setItemAvailability,
+  getCredentialsByRestaurantId,
+  getAllRestaurants,
+} from "@/lib/demo-store";
 
 export const dynamic = "force-dynamic";
 
-const DEMO_STAFF_ID = "55555555-5555-5555-5555-555555555551";
+function resolveDemoAdmin(adminId: string) {
+  for (const r of getAllRestaurants()) {
+    const creds = getCredentialsByRestaurantId(r.id);
+    const match = creds.find((c) => c.adminId === adminId);
+    if (match) {
+      return {
+        id: match.adminId,
+        email: match.email,
+        restaurantId: match.restaurantId,
+        role: match.role as "restaurant_admin" | "restaurant_staff",
+      };
+    }
+  }
+  return null;
+}
 
 export async function POST(
   req: NextRequest,
@@ -34,45 +51,13 @@ export async function POST(
     );
   }
 
-  let admin;
-  let db;
-  try {
-    db = getSupabase();
-    admin = await getAdminById(db, adminId);
-  } catch {
-    admin =
-      adminId === DEMO_STAFF_ID
-        ? {
-            id: DEMO_STAFF_ID,
-            email: "admin@zilo.ma",
-            restaurantId: "11111111-1111-1111-1111-111111111111",
-            role: "restaurant_admin" as const,
-          }
-        : null;
-    db = null;
-  }
+  const admin = resolveDemoAdmin(adminId);
 
-  if (!admin) {
+  if (!admin || !admin.restaurantId) {
     return NextResponse.json({ error: "Invalid admin" }, { status: 401 });
   }
 
-  if (db) {
-    try {
-      const { error } = await db
-        .from("menu_items")
-        .update({ is_available: body.isAvailable })
-        .eq("id", itemId);
-
-      if (error) {
-        return NextResponse.json(
-          { error: "Failed to update item" },
-          { status: 500 },
-        );
-      }
-    } catch {
-      /* demo fallback — no persistent store */
-    }
-  }
+  setItemAvailability(admin.restaurantId, itemId, body.isAvailable);
 
   return NextResponse.json({
     ok: true,

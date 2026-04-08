@@ -1,55 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { confirmPayment, getOrderById, computePaymentSummary } from "@/lib/demo-order-store";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const db = getSupabase();
+  let body: { orderId?: string } = {};
+  try { body = await req.json(); } catch { /* no body is ok */ }
+
   const paymentId = params.id;
+  const { orderId } = body;
 
-  const { data: payment } = await db
-    .from("payments")
-    .select("*, table_orders(*)")
-    .eq("id", paymentId)
-    .single();
+  if (!orderId) {
+    return NextResponse.json({ error: "orderId is required" }, { status: 400 });
+  }
 
+  const order = getOrderById(orderId);
+  if (!order) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  const payment = order.payments.find((p) => p.id === paymentId);
   if (!payment) {
     return NextResponse.json({ error: "Payment not found" }, { status: 404 });
   }
-
-  if (payment.payment_method !== "cash" || payment.status !== "pending_cash_confirm") {
-    return NextResponse.json({ error: "Payment is not pending cash confirmation" }, { status: 400 });
+  if (payment.status !== "pending") {
+    return NextResponse.json({ error: "Payment already confirmed" }, { status: 422 });
   }
 
-  await db
-    .from("payments")
-    .update({ status: "completed" })
-    .eq("id", paymentId);
-
-  const order = payment.table_orders;
-  const newCashPending = Math.max(0, Number(order.amount_cash_pending) - Number(payment.amount));
-  const newAmountPaid = Number(order.amount_paid) + Number(payment.amount);
-  const remaining = Number(order.remaining_amount);
-
-  let newStatus: string = "partially_paid";
-  if (newCashPending > 0) {
-    newStatus = "pending_cash";
-  } else if (remaining <= 0) {
-    newStatus = "paid";
+  const ok = confirmPayment(orderId, paymentId);
+  if (!ok) {
+    return NextResponse.json({ error: "Could not confirm payment" }, { status: 500 });
   }
 
-  await db
-    .from("table_orders")
-    .update({
-      amount_paid: Number(newAmountPaid.toFixed(2)),
-      amount_cash_pending: Number(newCashPending.toFixed(2)),
-      status: newStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", order.id);
+  const updated = getOrderById(orderId);
+  const summary = updated ? computePaymentSummary(updated) : null;
 
-  return NextResponse.json({ ok: true, orderStatus: newStatus });
+  return NextResponse.json({
+    ok: true,
+    orderStatus: updated?.status ?? "paid",
+    confirmedPaid: summary?.totalConfirmed ?? 0,
+    pendingCash: summary?.pendingCash ?? 0,
+    remainingToClaim: summary?.remainingToClaim ?? 0,
+  });
 }
